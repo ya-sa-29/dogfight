@@ -50,3 +50,30 @@ export function drawShip(context, ship) {
 
     context.restore();
 }
+
+export function drawBullet(context, bullet) {
+    context.save();
+
+    context.beginPath();
+    context.arc(bullet.pos.x, bullet.pos.y, bullet.radius, 0, Math.PI * 2);
+    context.fillStyle = "#F1FEC8";
+    context.fill();
+
+    context.restore();
+}
+
+export function drawAsteroid(context, asteroid) {
+    context.save();
+    context.beginPath();
+    context.arc(
+        asteroid.pos.x,
+        asteroid.pos.y,
+        asteroid.radius,
+        0,
+        Math.PI * 2,
+    );
+    context.strokeStyle = "#D6A77A";
+    context.lineWidth = 2;
+    context.stroke();
+    context.restore();
+}

@@ -1,4 +1,8 @@
+import { Vector2 } from "./Vector.js";
+
 export function wrapShip(ship, width, height) {
-    ship.x = ((ship.x % width) + width) % width;
-    ship.y = ((ship.y % height) + height) % height;
+    ship.pos = new Vector2(
+        ((ship.pos.x % width) + width) % width,
+        ((ship.pos.y % height) + height) % height,
+    );
 }
