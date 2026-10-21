@@ -1,8 +1,10 @@
-import { circlesOverlap } from "./collision.js";
+import { resolveCollisions } from "./collision.js";
 
 export class World {
     #entities = new Map();
     #pendingRemoval = new Set();
+
+    score = 0;
 
     spawn(entity) {
         this.#entities.set(entity.id, entity);
@@ -46,39 +48,12 @@ export class World {
         const entities = [...this.#entities.values()];
 
         for (const entity of entities) {
-            if (entity.alive) entity.update(dt, inputs, this);
-        }
-
-        this.resolveCollisions();
-        this.sweep();
-    }
-
-    resolveCollisions() {
-        const entities = [...this.#entities.values()];
-
-        for (let i = 0; i < entities.length; i++) {
-            const a = entities[i];
-
-            if (!a.alive) continue;
-
-            for (let j = i + 1; j < entities.length; j++) {
-                const b = entities[j];
-
-                if (!b.alive) continue;
-                if (!circlesOverlap(a, b)) continue;
-
-                if (a.kind === "bullet" && b.kind === "asteroid") {
-                    b.takeDamage(1);
-                    this.despawn(a.id);
-                } else if (a.kind === "asteroid" && b.kind === "bullet") {
-                    a.takeDamage(1);
-                    this.despawn(b.id);
-                } else if (a.kind === "ship" && b.kind === "asteroid") {
-                    a.takeDamage(1);
-                } else if (a.kind === "asteroid" && b.kind === "ship") {
-                    b.takeDamage(1);
-                }
+            if (entity.alive) {
+                entity.update(dt, inputs, this);
             }
         }
+
+        resolveCollisions(this);
+        this.sweep();
     }
 }

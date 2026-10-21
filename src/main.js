@@ -6,16 +6,32 @@ import { wrapShip } from "./sim/arena.js";
 import { Vector2 } from "./sim/Vector.js";
 import { Asteroid } from "./sim/asteroid.js";
 import { createCanvas } from "./render/canvas.js";
-import { drawAsteroid, drawBullet, drawGrid, drawShip } from "./render/draw.js";
+import {
+    drawAsteroid,
+    drawBullet,
+    drawExplosion,
+    drawGrid,
+    drawMissile,
+    drawPickup,
+    drawShip,
+} from "./render/draw.js";
+import { createHomingBehavior } from "./sim/homing.js";
+import { Pickup } from "./sim/pickup.js";
 
 const canvas = createCanvas();
 const input = createInput();
-
 const world = new World();
 
 const ship = world.spawn(new Ship(canvas.width / 2, canvas.height / 2));
 
-world.spawn(new Asteroid(new Vector2(100, 100), new Vector2(35, 20), 25));
+const asteroid = world.spawn(
+    new Asteroid(new Vector2(100, 100), new Vector2(35, 20), 25),
+);
+
+asteroid.behaviors.push(createHomingBehavior(ship));
+
+// Тимчасовий pickup для перевірки підбору ракет.
+world.spawn(new Pickup(new Vector2(canvas.width * 0.7, canvas.height * 0.3)));
 
 let respawnTimer = 0;
 
@@ -89,8 +105,20 @@ loop = createLoop({
             drawBullet(context, bullet);
         }
 
+        for (const missile of world.ofKind("missile")) {
+            drawMissile(context, missile);
+        }
+
+        for (const pickup of world.ofKind("pickup")) {
+            drawPickup(context, pickup);
+        }
+
         for (const asteroid of world.ofKind("asteroid")) {
             drawAsteroid(context, asteroid);
+        }
+
+        for (const explosion of world.ofKind("explosion")) {
+            drawExplosion(context, explosion);
         }
 
         const stats = loop.getStats();
@@ -107,6 +135,21 @@ loop = createLoop({
             74,
         );
         context.fillText(`Ship HP: ${ship.hp}`, 20, 96);
+        context.fillText(`Score: ${world.score}`, 20, 118);
+        context.fillText(`Missiles: ${ship.missileCount}`, 20, 140);
+        context.fillText(`Weapon: ${ship.weapon.toUpperCase()} [E]`, 20, 162);
+
+        if (respawnTimer > 0) {
+            context.fillStyle = "#FFD166";
+            context.textAlign = "center";
+            context.font = "24px monospace";
+
+            context.fillText(
+                `RESPAWN IN: ${respawnTimer.toFixed(1)}`,
+                canvas.width / 2,
+                canvas.height / 2,
+            );
+        }
     },
 });
 

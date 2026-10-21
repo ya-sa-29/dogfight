@@ -13,6 +13,8 @@ export class Entity {
         this.kind = kind;
         this.#hp = hp;
         this.alive = true;
+
+        this.behaviors = [];
     }
 
     get id() {
@@ -38,5 +40,9 @@ export class Entity {
 
     update(dt) {
         this.pos = this.pos.add(this.vel.scale(dt));
+
+        for (const behavior of this.behaviors) {
+            behavior.update(this, dt);
+        }
     }
 }

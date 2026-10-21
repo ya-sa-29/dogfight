@@ -1,6 +1,7 @@
 import { Entity } from "./entity.js";
 import { Vector2 } from "./Vector.js";
 import { Bullet } from "./bullet.js";
+import { Missile } from "./missile.js";
 
 export class Ship extends Entity {
     constructor(x = 400, y = 300) {
@@ -16,6 +17,9 @@ export class Ship extends Entity {
         this.thrust = false;
         this.fireCooldown = 0;
         this.invulnerabilityTimer = 0;
+
+        this.weapon = "bullet";
+        this.missileCount = 0;
     }
 
     update(dt, input, world) {
@@ -51,11 +55,36 @@ export class Ship extends Entity {
 
         super.update(dt);
 
+        if (input.justPressed("KeyE")) {
+            if (this.weapon === "bullet" && this.missileCount > 0) {
+                this.weapon = "missile";
+            } else {
+                this.weapon = "bullet";
+            }
+        }
+
+        if (this.missileCount <= 0) {
+            this.weapon = "bullet";
+        }
+
         this.fireCooldown = Math.max(0, this.fireCooldown - dt);
 
         if (input.isDown("Space") && this.fireCooldown === 0) {
-            this.fire(world);
-            this.fireCooldown = 0.25;
+            if (this.weapon === "bullet") {
+                this.fire(world);
+                this.fireCooldown = 0.25;
+            } else if (this.weapon === "missile") {
+                const launched = this.fireMissile(world);
+
+                if (launched) {
+                    this.missileCount -= 1;
+                    this.fireCooldown = 0.5;
+
+                    if (this.missileCount <= 0) {
+                        this.weapon = "bullet";
+                    }
+                }
+            }
         }
     }
 
@@ -72,5 +101,19 @@ export class Ship extends Entity {
         const bulletVelocity = this.vel.add(direction.scale(450));
 
         world.spawn(new Bullet(nose, bulletVelocity, this.angle));
+    }
+
+    fireMissile(world) {
+        const target = world.ofKind("asteroid").next().value;
+
+        if (!target) return false;
+
+        const direction = Vector2.fromAngle(this.angle);
+        const nose = this.pos.add(direction.scale(this.radius));
+        const missileVelocity = this.vel.add(direction.scale(250));
+
+        world.spawn(new Missile(nose, missileVelocity, this.angle, target));
+
+        return true;
     }
 }

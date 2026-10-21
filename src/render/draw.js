@@ -62,6 +62,62 @@ export function drawBullet(context, bullet) {
     context.restore();
 }
 
+export function drawMissile(context, missile) {
+    context.save();
+
+    context.translate(missile.pos.x, missile.pos.y);
+    context.rotate(missile.angle);
+
+    // Хвіст ракети
+    context.beginPath();
+    context.moveTo(-5, -3);
+    context.lineTo(-12, 0);
+    context.lineTo(-5, 3);
+    context.closePath();
+    context.fillStyle = "#FF7777";
+    context.fill();
+
+    // Корпус ракети
+    context.beginPath();
+    context.moveTo(7, 0);
+    context.lineTo(-4, -3);
+    context.lineTo(-4, 3);
+    context.closePath();
+    context.fillStyle = "#F04444";
+    context.fill();
+
+    // Носик
+    context.beginPath();
+    context.arc(5, 0, 1.5, 0, Math.PI * 2);
+    context.fillStyle = "#FFD6D6";
+    context.fill();
+
+    context.restore();
+}
+
+export function drawPickup(context, pickup) {
+    context.save();
+
+    context.translate(pickup.pos.x, pickup.pos.y);
+
+    // Ромб позначає боєзапас ракет
+    context.beginPath();
+    context.moveTo(0, -pickup.radius);
+    context.lineTo(pickup.radius, 0);
+    context.lineTo(0, pickup.radius);
+    context.lineTo(-pickup.radius, 0);
+    context.closePath();
+
+    context.fillStyle = "#F04444";
+    context.fill();
+
+    context.strokeStyle = "#FFD6D6";
+    context.lineWidth = 2;
+    context.stroke();
+
+    context.restore();
+}
+
 export function drawAsteroid(context, asteroid) {
     context.save();
     context.beginPath();
@@ -76,4 +132,25 @@ export function drawAsteroid(context, asteroid) {
     context.lineWidth = 2;
     context.stroke();
     context.restore();
+}
+
+export function drawExplosion(context, explosion) {
+    for (const particle of explosion.particles) {
+        if (particle.life <= 0) continue;
+
+        const progress = 1 - particle.life / particle.maxLife;
+        const alpha = 1 - progress;
+        const size = 2 + (1 - progress) * 2;
+
+        const x = explosion.pos.x + particle.pos.x;
+        const y = explosion.pos.y + particle.pos.y;
+
+        context.globalAlpha = alpha;
+        context.fillStyle = "#FFD166";
+        context.beginPath();
+        context.arc(x, y, size, 0, Math.PI * 2);
+        context.fill();
+    }
+
+    context.globalAlpha = 1;
 }
