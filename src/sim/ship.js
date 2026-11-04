@@ -2,6 +2,7 @@ import { Entity } from "./entity.js";
 import { Vector2 } from "./Vector.js";
 import { Bullet } from "./bullet.js";
 import { Missile } from "./missile.js";
+import { gameEvents } from "../events/gameEvents.js";
 
 export class Ship extends Entity {
     constructor(x = 400, y = 300) {
@@ -101,6 +102,7 @@ export class Ship extends Entity {
         const bulletVelocity = this.vel.add(direction.scale(450));
 
         world.spawn(new Bullet(nose, bulletVelocity, this.angle));
+        gameEvents.emit("fired", { weapon: "bullet" });
     }
 
     fireMissile(world) {
@@ -113,7 +115,8 @@ export class Ship extends Entity {
         const missileVelocity = this.vel.add(direction.scale(250));
 
         world.spawn(new Missile(nose, missileVelocity, this.angle, target));
-
+        gameEvents.emit("fired", { weapon: "missile" });
+        
         return true;
     }
 }

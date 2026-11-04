@@ -1,0 +1,28 @@
+{
+  "rooms": [
+    {
+      "id": "training",
+      "name": "Training Arena",
+      "description": "Невелика тренувальна арена",
+      "width": 1600,
+      "height": 900,
+      "asteroidCount": 8
+    },
+    {
+      "id": "combat",
+      "name": "Combat Zone",
+      "description": "Арена для інтенсивного бою",
+      "width": 2400,
+      "height": 1400,
+      "asteroidCount": 18
+    },
+    {
+      "id": "survival",
+      "name": "Survival",
+      "description": "Велика арена з великою кількістю астероїдів",
+      "width": 3000,
+      "height": 1800,
+      "asteroidCount": 30
+    }
+  ]
+}

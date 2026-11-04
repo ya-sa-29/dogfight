@@ -1,4 +1,5 @@
 import { Explosion } from "./explosion.js";
+import { gameEvents } from "../events/gameEvents.js";
 
 export function circlesOverlap(a, b) {
     const dx = a.pos.x - b.pos.x;
@@ -47,10 +48,12 @@ export function resolveCollisions(world) {
 function damageAsteroid(world, asteroid, projectile) {
     asteroid.takeDamage(projectile.kind === "missile" ? 2 : 1);
     world.despawn(projectile.id);
+    gameEvents.emit("hit", { target: "asteroid" });
 
     if (!asteroid.alive) {
         world.score += 100;
         world.spawn(new Explosion(asteroid.pos));
+        gameEvents.emit("exploded", { target: "asteroid" });
     }
 }
 
@@ -60,5 +63,6 @@ function damageShip(world, ship) {
 
     if (wasAlive && !ship.alive) {
         world.spawn(new Explosion(ship.pos));
+        gameEvents.emit("exploded", { target: "ship" });
     }
 }
