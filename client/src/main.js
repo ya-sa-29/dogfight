@@ -1,4 +1,3 @@
-
 import "./lobby/lobby.css";
 
 import { createAudioSystem } from "./audio/audio.js";
@@ -24,8 +23,11 @@ import { Pickup } from "./sim/pickup.js";
 import { loadAll, loadJson } from "./assets/loader.js";
 import { Lobby } from "./lobby/lobby.js";
 import { LobbyView } from "./lobby/lobbyView.js";
+import { Connection } from "./network/connection.js";
 
 const canvas = createCanvas();
+
+let gameConnection = null;
 
 function drawLoading(progress = 0, message = "Loading assets...") {
     const context = canvas.context;
@@ -321,12 +323,64 @@ async function bootstrap() {
         const lobbyView = new LobbyView(lobby);
 
         lobby.addEventListener("join", (event) => {
+            alert("JOIN EVENT WORKS");
+            console.log("LOBBY JOIN EVENT:", event.detail);
             const { room, playerName } = event.detail;
 
             lobby.leave();
             lobbyView.destroy();
 
-            startGame(room, playerName);
+            gameConnection?.disconnect();
+
+            gameConnection = new Connection();
+            window.gameConnection = gameConnection;
+
+            let gameStarted = false;
+
+            gameConnection.addEventListener("open", () => {
+                console.log("WebSocket connected");
+
+                gameConnection.send({
+                    type: "join",
+                    roomId: room.id,
+                    playerName,
+                });
+            });
+
+            gameConnection.addEventListener("joined", (event) => {
+                console.log("Joined room:", event.detail.roomId);
+                console.log("Player ID:", event.detail.playerId);
+
+                if (!gameStarted) {
+                    gameStarted = true;
+                    startGame(room, playerName);
+                }
+            });
+
+            gameConnection.addEventListener("roster", (event) => {
+                console.log("Players in room:", event.detail.players);
+            });
+
+            gameConnection.addEventListener("chat", (event) => {
+                console.log(
+                    `[${event.detail.playerName}]: ${event.detail.message}`,
+                );
+            });
+
+            gameConnection.addEventListener("close", (event) => {
+                console.log(
+                    "WebSocket disconnected:",
+                    event.detail.code,
+                    event.detail.reason,
+                );
+            });
+
+            gameConnection.addEventListener("error", (event) => {
+                console.error("WebSocket error:", event.detail);
+            });
+
+            console.log("JOIN EVENT: connecting to WebSocket...");
+            gameConnection.connect();
         });
 
         lobbyView.show();

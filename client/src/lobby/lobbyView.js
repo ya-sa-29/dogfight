@@ -51,13 +51,20 @@ export class LobbyView {
         });
 
         this.joinButton.addEventListener("click", () => {
+            console.log("1. JOIN BUTTON CLICKED");
+
             try {
+                console.log("2. CALLING LOBBY.JOIN");
+
                 this.lobby.join(
                     this.nameInput.value,
                     this.roomSelect.value,
                 );
+
+                console.log("3. LOBBY.JOIN COMPLETED");
                 this.showError("");
             } catch (error) {
+                console.error("JOIN ERROR:", error);
                 this.showError(error.message);
             }
         });

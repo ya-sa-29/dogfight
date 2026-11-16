@@ -1,0 +1,6 @@
+{"t":"2026-11-16T20:02:06.664Z","type":"join","playerId":"f1bf356b-da7e-470d-bf92-e7c270c14ab7","playerName":"1"}
+{"t":"2026-11-16T20:02:14.760Z","type":"join","playerId":"1b69a67a-8791-4939-b277-9fcae3fb56b4","playerName":"2"}
+{"t":"2026-11-16T20:02:32.593Z","type":"chat","playerId":"f1bf356b-da7e-470d-bf92-e7c270c14ab7","playerName":"1","message":"Hello from Player 1!","timestamp":"2026-11-16T20:02:32.593Z"}
+{"t":"2026-11-16T20:02:48.310Z","type":"chat","playerId":"1b69a67a-8791-4939-b277-9fcae3fb56b4","playerName":"2","message":"Hello from Player 2!","timestamp":"2026-11-16T20:02:48.310Z"}
+{"t":"2026-11-16T20:02:51.449Z","type":"leave","playerId":"f1bf356b-da7e-470d-bf92-e7c270c14ab7","playerName":"1"}
+{"t":"2026-11-16T20:02:51.997Z","type":"leave","playerId":"1b69a67a-8791-4939-b277-9fcae3fb56b4","playerName":"2"}

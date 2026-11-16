@@ -1,0 +1,80 @@
+import { EventEmitter } from 'node:events';
+import { createMatchLog } from './matchlog.js';
+
+export class Room extends EventEmitter {
+    constructor(id) {
+        super();
+
+        this.id = id;
+        this.players = new Map();
+        this.matchLog = createMatchLog(id);
+
+        this.on('event', (event) => {
+            this.matchLog.write(event);
+        });
+    }
+
+    join(player) {
+        if (this.players.has(player.id)) {
+            return false;
+        }
+
+        this.players.set(player.id, player);
+
+        this.emit('join', player);
+        this.emit('event', {
+            type: 'join',
+            playerId: player.id,
+            playerName: player.name,
+        });
+
+        return true;
+    }
+
+    leave(playerId) {
+        const player = this.players.get(playerId);
+
+        if (!player) {
+            return false;
+        }
+
+        this.players.delete(playerId);
+
+        this.emit('leave', player);
+        this.emit('event', {
+            type: 'leave',
+            playerId: player.id,
+            playerName: player.name,
+        });
+
+        if (this.players.size === 0) {
+            this.emit('empty');
+            this.matchLog.close();
+        }
+
+        return true;
+    }
+
+    chat(playerId, message) {
+        const player = this.players.get(playerId);
+
+        if (!player) {
+            return false;
+        }
+
+        const chatMessage = {
+            playerId: player.id,
+            playerName: player.name,
+            message,
+            timestamp: new Date().toISOString(),
+        };
+
+        this.emit('chat', chatMessage);
+        this.emit('event', {
+            type: 'chat',
+            ...chatMessage,
+        });
+
+        return chatMessage;
+    }
+}

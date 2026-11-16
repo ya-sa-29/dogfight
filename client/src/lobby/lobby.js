@@ -13,7 +13,7 @@ export class Lobby extends EventTarget {
     }
 
     async loadRooms(signal) {
-        const response = await fetch("/api/rooms.json", {
+        const response = await fetch("/api/rooms", {
             signal,
             headers: {
                 Accept: "application/json",
@@ -26,11 +26,11 @@ export class Lobby extends EventTarget {
 
         const data = await response.json();
 
-        if (!Array.isArray(data.rooms)) {
+        if (!Array.isArray(data)) {
             throw new Error("Invalid rooms response");
         }
 
-        this.rooms = data.rooms;
+        this.rooms = data;
 
         if (!this.rooms.some((room) => room.id === this.selectedRoomId)) {
             this.selectedRoomId = this.rooms[0]?.id ?? null;
