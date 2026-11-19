@@ -31,6 +31,14 @@
       "description": "Test API room",
       "asteroidCount": 5,
       "height": 800
+    },
+    {
+      "id": "lab5-runtime-test",
+      "name": "Lab 5 Runtime Test",
+      "width": 1600,
+      "description": "Testing dynamic room registration",
+      "asteroidCount": 0,
+      "height": 900
     }
   ]
 }

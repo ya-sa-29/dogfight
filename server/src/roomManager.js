@@ -1,9 +1,32 @@
 
-import { Room } from './room.js';
+import { Room } from "./room.js";
 
 export class RoomManager {
-    constructor() {
+    constructor(roomConfigs = []) {
         this.rooms = new Map();
+        this.roomConfigs = new Map(
+            roomConfigs.map((config) => [config.id, config]),
+        );
+    }
+    
+    setRoomConfigs(roomConfigs = []) {
+    this.roomConfigs = new Map(
+        roomConfigs.map((config) => [config.id, config]),
+    );
+}
+
+    addRoomConfig(config) {
+        if (
+            !config ||
+            typeof config.id !== "string" ||
+            !config.id.trim() ||
+            this.roomConfigs.has(config.id)
+        ) {
+            return false;
+        }
+
+        this.roomConfigs.set(config.id, config);
+        return true;
     }
 
     createRoom(id) {
@@ -11,9 +34,15 @@ export class RoomManager {
             return null;
         }
 
-        const room = new Room(id);
+        const config = this.roomConfigs.get(id);
 
-        room.on('empty', () => {
+        if (!config) {
+            return null;
+        }
+
+        const room = new Room(id, config);
+
+        room.on("empty", () => {
             this.deleteRoom(id);
         });
 
@@ -34,7 +63,6 @@ export class RoomManager {
         }
 
         this.rooms.delete(id);
-
         return true;
     }
 }

@@ -5,12 +5,14 @@
     "type": "module",
     "workspaces": [
         "client",
-        "server"
+        "server",
+        "shared"
     ],
     "scripts": {
         "dev": "npm run dev --workspace=@dogfight/client",
         "build": "npm run build --workspace=@dogfight/client",
         "preview": "npm run preview --workspace=@dogfight/client",
+        "test": "node --test",
         "lint": "eslint .",
         "format": "prettier --write .",
         "format:check": "prettier --check ."

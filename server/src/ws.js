@@ -1,14 +1,17 @@
 
-import { WebSocketServer, WebSocket } from 'ws';
-import { randomUUID } from 'node:crypto';
-import { RoomManager } from './roomManager.js';
-import { parseClientMessage } from './protocol.js';
+import { WebSocketServer, WebSocket } from "ws";
+import { randomUUID } from "node:crypto";
+import { RoomManager } from "./roomManager.js";
+import { parseClientMessage } from "./protocol.js";
 
 const JOIN_TIMEOUT = 5000;
 const HEARTBEAT_INTERVAL = 15000;
 
 const RATE_LIMIT = 10;
 const RATE_BURST = 20;
+
+const INPUT_RATE_LIMIT = 90;
+const INPUT_RATE_BURST = 120;
 
 const MAX_PLAYERS_PER_ROOM = 8;
 const MAX_ROOMS = 100;
@@ -17,15 +20,17 @@ const MAX_BUFFERED_AMOUNT = 1024 * 1024;
 
 export const roomManager = new RoomManager();
 
-export function setupWebSocket(server) {
+export function setupWebSocket(server, roomConfigs = []) {
+    roomManager.setRoomConfigs(roomConfigs);
+
     const wss = new WebSocketServer({
         server,
-        path: '/ws',
+        path: "/ws",
         maxPayload: 16 * 1024,
     });
 
-    wss.on('connection', (socket) => {
-        console.log('WebSocket client connected');
+    wss.on("connection", (socket) => {
+        console.log("WebSocket client connected");
 
         socket.player = null;
         socket.room = null;
@@ -33,85 +38,130 @@ export function setupWebSocket(server) {
 
         let joined = false;
 
-        // Token Bucket
         let tokens = RATE_BURST;
         let lastRefill = Date.now();
 
-        function consumeToken() {
-            const now = Date.now();
-            const elapsed = (now - lastRefill) / 1000;
+        let inputTokens = INPUT_RATE_BURST;
+        let lastInputRefill = Date.now();
 
-            tokens = Math.min(
-                RATE_BURST,
-                tokens + elapsed * RATE_LIMIT,
+        function consumeToken(rate, burst, bucket) {
+            const now = Date.now();
+            const elapsed = (now - bucket.lastRefill) / 1000;
+
+            bucket.tokens = Math.min(
+                burst,
+                bucket.tokens + elapsed * rate,
             );
 
-            lastRefill = now;
+            bucket.lastRefill = now;
 
-            if (tokens < 1) {
+            if (bucket.tokens < 1) {
                 return false;
             }
 
-            tokens -= 1;
+            bucket.tokens -= 1;
             return true;
+        }
+
+        function consumeGeneralToken() {
+            const bucket = {
+                get tokens() {
+                    return tokens;
+                },
+                set tokens(value) {
+                    tokens = value;
+                },
+                get lastRefill() {
+                    return lastRefill;
+                },
+                set lastRefill(value) {
+                    lastRefill = value;
+                },
+            };
+
+            return consumeToken(RATE_LIMIT, RATE_BURST, bucket);
+        }
+
+        function consumeInputToken() {
+            const bucket = {
+                get tokens() {
+                    return inputTokens;
+                },
+                set tokens(value) {
+                    inputTokens = value;
+                },
+                get lastRefill() {
+                    return lastInputRefill;
+                },
+                set lastRefill(value) {
+                    lastInputRefill = value;
+                },
+            };
+
+            return consumeToken(
+                INPUT_RATE_LIMIT,
+                INPUT_RATE_BURST,
+                bucket,
+            );
         }
 
         const joinTimeout = setTimeout(() => {
             if (!joined) {
-                console.log('Join timeout');
-                socket.close(1008, 'Join timeout');
+                console.log("Join timeout");
+                socket.close(1008, "Join timeout");
             }
         }, JOIN_TIMEOUT);
 
-        socket.on('pong', () => {
+        socket.on("pong", () => {
             socket.missedPongs = 0;
         });
 
-        socket.on('message', (data) => {
-            // Rate limiting
-            if (!consumeToken()) {
-                console.log('Rate limit exceeded');
-                socket.close(1008, 'Rate limit exceeded');
-                return;
-            }
-
+        socket.on("message", (data) => {
             let message;
 
             try {
                 message = parseClientMessage(data);
             } catch (error) {
-                console.error('Invalid WebSocket message:', error);
+                console.error("Invalid WebSocket message:", error);
                 socket.close(error.closeCode || 1008, error.message);
                 return;
             }
 
-            if (message.type === 'join') {
+            const allowed =
+                message.type === "input"
+                    ? consumeInputToken()
+                    : consumeGeneralToken();
+
+            if (!allowed) {
+                console.log("Rate limit exceeded:", message.type);
+                socket.close(1008, "Rate limit exceeded");
+                return;
+            }
+
+            if (message.type === "join") {
                 if (joined) {
-                    socket.close(1008, 'Already joined');
+                    socket.close(1008, "Already joined");
                     return;
                 }
 
                 let room = roomManager.getRoom(message.roomId);
 
-                // Maximum rooms per server
                 if (!room && roomManager.rooms.size >= MAX_ROOMS) {
-                    socket.close(1008, 'Server room limit reached');
+                    socket.close(1008, "Server room limit reached");
                     return;
                 }
 
-                // Create room if necessary
                 if (!room) {
                     room = roomManager.createRoom(message.roomId);
                 }
 
                 if (!room) {
-                    socket.close(1008, 'Could not create room');
+                    socket.close(1008, "Unknown room");
                     return;
                 }
 
-                // Maximum players per room
                 if (room.players.size >= MAX_PLAYERS_PER_ROOM) {
-                    socket.close(1008, 'Room is full');
+                    socket.close(1008, "Room is full");
                     return;
                 }
 
@@ -124,7 +174,7 @@ export function setupWebSocket(server) {
                 const added = room.join(socket.player);
 
                 if (!added) {
-                    socket.close(1008, 'Could not join room');
+                    socket.close(1008, "Could not join room");
                     return;
                 }
 
@@ -138,7 +188,7 @@ export function setupWebSocket(server) {
                 );
 
                 sendMessage(socket, {
-                    type: 'joined',
+                    type: "joined",
                     playerId: socket.player.id,
                     roomId: room.id,
                 });
@@ -148,11 +198,11 @@ export function setupWebSocket(server) {
             }
 
             if (!joined) {
-                socket.close(1008, 'Join required');
+                socket.close(1008, "Join required");
                 return;
             }
 
-            if (message.type === 'chat') {
+            if (message.type === "chat") {
                 const chatMessage = socket.room.chat(
                     socket.player.id,
                     message.message,
@@ -160,20 +210,31 @@ export function setupWebSocket(server) {
 
                 if (chatMessage) {
                     broadcast(socket.room, {
-                        type: 'chat',
+                        type: "chat",
                         ...chatMessage,
                     });
                 }
             }
 
-            if (message.type === 'leave') {
+            if (message.type === "input") {
+                socket.room.match.setInput(socket.player.id, message);
+            }
+
+            if (message.type === "ping") {
+                sendMessage(socket, {
+                    type: "pong",
+                    timestamp: message.timestamp,
+                });
+            }
+            
+            if (message.type === "leave") {
                 console.log(`Player ${socket.player.name} left`);
-                socket.close(1000, 'Player left');
+                socket.close(1000, "Player left");
             }
         });
 
-        socket.on('close', () => {
-            console.log('WebSocket client disconnected');
+        socket.on("close", () => {
+            console.log("WebSocket client disconnected");
 
             clearTimeout(joinTimeout);
 
@@ -183,8 +244,8 @@ export function setupWebSocket(server) {
             }
         });
 
-        socket.on('error', (error) => {
-            console.error('WebSocket error:', error);
+        socket.on("error", (error) => {
+            console.error("WebSocket error:", error);
         });
     });
 
@@ -197,7 +258,7 @@ export function setupWebSocket(server) {
             socket.missedPongs += 1;
 
             if (socket.missedPongs >= 2) {
-                console.log('Terminating unresponsive WebSocket client');
+                console.log("Terminating unresponsive WebSocket client");
                 socket.terminate();
                 continue;
             }
@@ -206,8 +267,13 @@ export function setupWebSocket(server) {
         }
     }, HEARTBEAT_INTERVAL);
 
-    wss.on('close', () => {
+    wss.on("close", () => {
         clearInterval(heartbeat);
+
+        for (const room of roomManager.rooms.values()) {
+            room.match.stop();
+            room.matchLog.close();
+        }
     });
 
     return wss;
@@ -219,14 +285,14 @@ function sendMessage(socket, message) {
     }
 
     if (socket.bufferedAmount > MAX_BUFFERED_AMOUNT) {
-        console.log('Slow client detected, closing connection');
-        socket.close(1013, 'Client too slow');
+        console.log("Slow client detected, closing connection");
+        socket.close(1013, "Client too slow");
         return false;
     }
 
     socket.send(JSON.stringify(message), (error) => {
         if (error) {
-            console.error('WebSocket send error:', error);
+            console.error("WebSocket send error:", error);
         }
     });
 
@@ -235,7 +301,7 @@ function sendMessage(socket, message) {
 
 function broadcastRoster(room) {
     const roster = {
-        type: 'roster',
+        type: "roster",
         players: Array.from(room.players.values()).map((player) => ({
             id: player.id,
             name: player.name,
