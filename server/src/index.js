@@ -7,6 +7,7 @@ import { resolveStaticFile } from './static.js';
 import { getRooms, saveRooms } from './rooms.js';
 import { readJsonBody } from './body.js';
 import { setupWebSocket } from './ws.js';
+import { roomManager } from './roomManager.js';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
@@ -25,6 +26,23 @@ const server = createServer(async (req, res) => {
             timestamp: new Date().toISOString(),
         }));
 
+        return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/stats') {
+        const matches = roomManager.getAllMatches();
+        const stats = {
+            timestamp: new Date().toISOString(),
+            matches: matches.map(match => match.getStats()),
+            totalPlayers: matches.reduce((sum, m) => sum + m.players.size, 0),
+            totalMatches: matches.length,
+        };
+
+        res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+        });
+
+        res.end(JSON.stringify(stats));
         return;
     }
 

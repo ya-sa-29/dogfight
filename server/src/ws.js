@@ -1,8 +1,8 @@
-
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
-import { RoomManager } from './roomManager.js';
-import { parseClientMessage } from './protocol.js';
+import { roomManager } from './roomManager.js';
+import { parseClientMessage, validateInputMessage } from './protocol.js';
+import { getRooms } from './rooms.js';
 
 const JOIN_TIMEOUT = 5000;
 const HEARTBEAT_INTERVAL = 15000;
@@ -15,8 +15,6 @@ const MAX_ROOMS = 100;
 
 const MAX_BUFFERED_AMOUNT = 1024 * 1024;
 
-export const roomManager = new RoomManager();
-
 export function setupWebSocket(server) {
     const wss = new WebSocketServer({
         server,
@@ -28,7 +26,7 @@ export function setupWebSocket(server) {
         console.log('WebSocket client connected');
 
         socket.player = null;
-        socket.room = null;
+        socket.match = null;
         socket.missedPongs = 0;
 
         let joined = false;
@@ -91,59 +89,81 @@ export function setupWebSocket(server) {
                     return;
                 }
 
-                let room = roomManager.getRoom(message.roomId);
-
-                // Maximum rooms per server
-                if (!room && roomManager.rooms.size >= MAX_ROOMS) {
-                    socket.close(1008, 'Server room limit reached');
-                    return;
-                }
-
-                // Create room if necessary
-                if (!room) {
-                    room = roomManager.createRoom(message.roomId);
-                }
-
-                if (!room) {
-                    socket.close(1008, 'Could not create room');
-                    return;
-                }
-
-                // Maximum players per room
-                if (room.players.size >= MAX_PLAYERS_PER_ROOM) {
-                    socket.close(1008, 'Room is full');
-                    return;
-                }
-
-                socket.player = {
-                    id: randomUUID(),
-                    name: message.playerName,
-                    socket,
-                };
-
-                const added = room.join(socket.player);
-
-                if (!added) {
-                    socket.close(1008, 'Could not join room');
-                    return;
-                }
-
-                socket.room = room;
-                joined = true;
-
-                clearTimeout(joinTimeout);
-
-                console.log(
-                    `Player ${socket.player.name} joined room ${room.id}`,
-                );
-
-                sendMessage(socket, {
-                    type: 'joined',
-                    playerId: socket.player.id,
-                    roomId: room.id,
+                // Get room config from rooms.json
+                let roomConfig = null;
+                getRooms().then(rooms => {
+                    const room = rooms.find(r => r.id === message.roomId);
+                    if (room) {
+                        roomConfig = room;
+                    }
+                    handleJoin(roomConfig);
+                }).catch(err => {
+                    console.error('Failed to get rooms:', err);
+                    socket.close(1008, 'Server error');
                 });
 
-                broadcastRoster(room);
+                function handleJoin(roomConfig) {
+                    if (!roomConfig) {
+                        socket.close(1008, 'Room not found');
+                        return;
+                    }
+
+                    let match = roomManager.getMatch(message.roomId);
+
+                    // Maximum rooms per server
+                    if (!match && roomManager.matches.size >= MAX_ROOMS) {
+                        socket.close(1008, 'Server room limit reached');
+                        return;
+                    }
+
+                    // Create match if necessary
+                    if (!match) {
+                        match = roomManager.createMatch(message.roomId, roomConfig);
+                    }
+
+                    if (!match) {
+                        socket.close(1008, 'Could not create match');
+                        return;
+                    }
+
+                    // Maximum players per room
+                    if (match.players.size >= MAX_PLAYERS_PER_ROOM) {
+                        socket.close(1008, 'Room is full');
+                        return;
+                    }
+
+                    socket.player = {
+                        id: randomUUID(),
+                        name: message.playerName,
+                        socket,
+                    };
+
+                    const added = match.addPlayer(socket.player);
+
+                    if (!added) {
+                        socket.close(1008, 'Could not join match');
+                        return;
+                    }
+
+                    socket.match = match;
+                    joined = true;
+
+                    clearTimeout(joinTimeout);
+
+                    console.log(
+                        `Player ${socket.player.name} joined match ${match.id}`,
+                    );
+
+                    sendMessage(socket, {
+                        type: 'joined',
+                        playerId: socket.player.id,
+                        roomId: match.id,
+                        seed: match.getSeed(),
+                        roomConfig: match.getRoomConfig(),
+                    });
+
+                    broadcastRoster(match);
+                }
                 return;
             }
 
@@ -152,18 +172,39 @@ export function setupWebSocket(server) {
                 return;
             }
 
-            if (message.type === 'chat') {
-                const chatMessage = socket.room.chat(
-                    socket.player.id,
-                    message.message,
-                );
-
-                if (chatMessage) {
-                    broadcast(socket.room, {
-                        type: 'chat',
-                        ...chatMessage,
-                    });
+            if (message.type === 'input') {
+                // Validate input message
+                let validatedInput;
+                try {
+                    validatedInput = validateInputMessage(message);
+                } catch (error) {
+                    console.error('Invalid input message:', error);
+                    socket.close(error.closeCode || 1008, error.message);
+                    return;
                 }
+
+                // Forward to match
+                if (socket.match) {
+                    socket.match.handleInput(socket.player.id, validatedInput);
+                }
+                return;
+            }
+
+            if (message.type === 'chat') {
+                if (socket.match) {
+                    const chatMessage = socket.match.handleChat(
+                        socket.player.id,
+                        message.message,
+                    );
+
+                    if (chatMessage) {
+                        broadcast(socket.match, {
+                            type: 'chat',
+                            ...chatMessage,
+                        });
+                    }
+                }
+                return;
             }
 
             if (message.type === 'leave') {
@@ -177,9 +218,9 @@ export function setupWebSocket(server) {
 
             clearTimeout(joinTimeout);
 
-            if (joined && socket.room && socket.player) {
-                socket.room.leave(socket.player.id);
-                broadcastRoster(socket.room);
+            if (joined && socket.match && socket.player) {
+                socket.match.removePlayer(socket.player.id);
+                broadcastRoster(socket.match);
             }
         });
 
@@ -233,20 +274,20 @@ function sendMessage(socket, message) {
     return true;
 }
 
-function broadcastRoster(room) {
+function broadcastRoster(match) {
     const roster = {
         type: 'roster',
-        players: Array.from(room.players.values()).map((player) => ({
+        players: Array.from(match.players.values()).map((player) => ({
             id: player.id,
             name: player.name,
         })),
     };
 
-    broadcast(room, roster);
+    broadcast(match, roster);
 }
 
-function broadcast(room, message) {
-    for (const player of room.players.values()) {
+function broadcast(match, message) {
+    for (const player of match.players.values()) {
         sendMessage(player.socket, message);
     }
 }

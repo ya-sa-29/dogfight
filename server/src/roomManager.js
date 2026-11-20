@@ -1,40 +1,45 @@
-
-import { Room } from './room.js';
+import { Match } from './match.js';
 
 export class RoomManager {
     constructor() {
-        this.rooms = new Map();
+        this.matches = new Map();
     }
 
-    createRoom(id) {
-        if (this.rooms.has(id)) {
+    createMatch(id, roomConfig) {
+        if (this.matches.has(id)) {
             return null;
         }
 
-        const room = new Room(id);
+        const match = new Match(id, roomConfig);
 
-        room.on('empty', () => {
-            this.deleteRoom(id);
+        match.on('empty', () => {
+            this.deleteMatch(id);
         });
 
-        this.rooms.set(id, room);
+        this.matches.set(id, match);
 
-        return room;
+        return match;
     }
 
-    getRoom(id) {
-        return this.rooms.get(id) ?? null;
+    getMatch(id) {
+        return this.matches.get(id) ?? null;
     }
 
-    deleteRoom(id) {
-        const room = this.rooms.get(id);
+    deleteMatch(id) {
+        const match = this.matches.get(id);
 
-        if (!room || room.players.size > 0) {
+        if (!match || match.players.size > 0) {
             return false;
         }
 
-        this.rooms.delete(id);
+        this.matches.delete(id);
 
         return true;
     }
+
+    getAllMatches() {
+        return Array.from(this.matches.values());
+    }
 }
+
+export const roomManager = new RoomManager();
