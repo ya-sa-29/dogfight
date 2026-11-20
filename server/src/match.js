@@ -197,40 +197,55 @@ export class Match extends EventEmitter {
     }
 
     getInputsForStep() {
-        // Build inputs object for world.step
-        // The shared World.step expects a single input object with thrust, turnLeft, turnRight, fire, switchWeapon
-        // For now, we'll use the first player's input (single player) or combine inputs
-        // For multiplayer, we need to handle each ship separately - but shared World.step doesn't support that yet
-        // For Stage 2.1, we'll use a combined input approach
+        // Build per-ship inputs Map for world.step
+        // Returns Map<shipId, Input> for per-entity input handling
+        const inputsMap = new Map();
 
-        let combinedInput = {
-            thrust: false,
-            turnLeft: false,
-            turnRight: false,
-            fire: false,
-            switchWeapon: false,
-        };
+        for (const [playerId, player] of this.players) {
+            const shipId = this.ships.get(playerId);
+            if (!shipId) continue;
 
-        // eslint-disable-next-line no-unused-vars
-        for (const [_playerId, player] of this.players) {
+            // For each ship, combine all pending inputs into one input for this tick
+            // Continuous actions (thrust, turnLeft, turnRight): use latest state
+            // One-shot actions (fire, switchWeapon): OR across all pending inputs
             if (player.pendingInputs.length > 0) {
-                // Use the latest input for this tick
-                const latestInput = player.pendingInputs[player.pendingInputs.length - 1];
+                let combinedInput = {
+                    thrust: false,
+                    turnLeft: false,
+                    turnRight: false,
+                    fire: false,
+                    switchWeapon: false,
+                };
 
-                // Combine inputs (OR for boolean actions)
-                combinedInput.thrust = combinedInput.thrust || latestInput.thrust;
-                combinedInput.turnLeft = combinedInput.turnLeft || latestInput.turnLeft;
-                combinedInput.turnRight = combinedInput.turnRight || latestInput.turnRight;
-                combinedInput.fire = combinedInput.fire || latestInput.fire;
-                combinedInput.switchWeapon = combinedInput.switchWeapon || latestInput.switchWeapon;
+                for (const pendingInput of player.pendingInputs) {
+                    // Continuous actions: use latest (last) input's state
+                    // One-shot actions: accumulate (OR)
+                    combinedInput.thrust = pendingInput.thrust;
+                    combinedInput.turnLeft = pendingInput.turnLeft;
+                    combinedInput.turnRight = pendingInput.turnRight;
+                    combinedInput.fire = combinedInput.fire || pendingInput.fire;
+                    combinedInput.switchWeapon = combinedInput.switchWeapon || pendingInput.switchWeapon;
+                }
+
+                inputsMap.set(shipId, combinedInput);
 
                 // Acknowledge all processed inputs
+                const latestInput = player.pendingInputs[player.pendingInputs.length - 1];
                 player.lastProcessedSeq = latestInput.seq;
                 player.pendingInputs = [];
+            } else {
+                // No input this tick - send empty input to maintain state
+                inputsMap.set(shipId, {
+                    thrust: false,
+                    turnLeft: false,
+                    turnRight: false,
+                    fire: false,
+                    switchWeapon: false,
+                });
             }
         }
 
-        return combinedInput;
+        return inputsMap;
     }
 
     broadcastSnapshot() {

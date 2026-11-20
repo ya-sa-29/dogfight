@@ -47,9 +47,15 @@ export class World {
     step(dt, inputs) {
         const entities = [...this.#entities.values()];
 
+        // inputs can be either:
+        // - a single input object (legacy, applied to all entities)
+        // - a Map<entityId, Input> for per-entity inputs
+        const isPerEntityInputs = inputs instanceof Map;
+
         for (const entity of entities) {
             if (entity.alive) {
-                entity.update(dt, inputs, this);
+                const entityInput = isPerEntityInputs ? inputs.get(entity.id) : inputs;
+                entity.update(dt, entityInput, this);
             }
         }
 

@@ -387,10 +387,12 @@ async function bootstrap() {
             gameConnection.addEventListener("joined", (event) => {
                 console.log("Joined room:", event.detail.roomId);
                 console.log("Player ID:", event.detail.playerId);
+                console.log("Ship ID:", event.detail.shipId);
                 console.log("Seed:", event.detail.seed);
                 console.log("Room config:", event.detail.roomConfig);
 
                 myPlayerId = event.detail.playerId;
+                myShipId = event.detail.shipId;
 
                 if (!gameStarted) {
                     gameStarted = true;

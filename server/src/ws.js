@@ -160,6 +160,7 @@ export function setupWebSocket(server) {
                         roomId: match.id,
                         seed: match.getSeed(),
                         roomConfig: match.getRoomConfig(),
+                        shipId: match.ships.get(socket.player.id),
                     });
 
                     broadcastRoster(match);
