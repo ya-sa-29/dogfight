@@ -5,12 +5,12 @@ export class RoomManager {
         this.matches = new Map();
     }
 
-    createMatch(id, roomConfig) {
+    createMatch(id, roomConfig, options = {}) {
         if (this.matches.has(id)) {
             return null;
         }
 
-        const match = new Match(id, roomConfig);
+        const match = new Match(id, roomConfig, options);
 
         match.on('empty', () => {
             this.deleteMatch(id);

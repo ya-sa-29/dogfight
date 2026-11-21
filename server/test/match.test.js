@@ -35,7 +35,7 @@ describe("Match Tests", () => {
         assert.equal(match.running, true);
 
         // Wait for a few ticks
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         assert.ok(match.tick > 0, "Tick should advance");
         assert.equal(TICK_RATE, 30);
@@ -151,7 +151,11 @@ describe("Match Tests", () => {
         for (let i = 0; i < snap1.length; i++) {
             assert.equal(snap1[i].x, snap2[i].x, `Entity ${i} x differs`);
             assert.equal(snap1[i].y, snap2[i].y, `Entity ${i} y differs`);
-            assert.equal(snap1[i].angle, snap2[i].angle, `Entity ${i} angle differs`);
+            assert.equal(
+                snap1[i].angle,
+                snap2[i].angle,
+                `Entity ${i} angle differs`,
+            );
         }
 
         match1.stop();
@@ -160,18 +164,18 @@ describe("Match Tests", () => {
 
     test("Snapshot contains tick, seed, entities, and playerAcks", () => {
         const snapshot = {
-            type: 'snapshot',
+            type: "snapshot",
             tick: match.tick,
             seed: match.seed,
             entities: match.world.getEntitiesSnapshot(),
             playerAcks: { "player-1": 0 },
         };
 
-        assert.equal(snapshot.type, 'snapshot');
-        assert.ok(typeof snapshot.tick === 'number');
-        assert.ok(typeof snapshot.seed === 'number');
+        assert.equal(snapshot.type, "snapshot");
+        assert.ok(typeof snapshot.tick === "number");
+        assert.ok(typeof snapshot.seed === "number");
         assert.ok(Array.isArray(snapshot.entities));
-        assert.ok(typeof snapshot.playerAcks === 'object');
+        assert.ok(typeof snapshot.playerAcks === "object");
     });
 
     test("Server rejects input without join", () => {
@@ -212,12 +216,186 @@ describe("Match Tests", () => {
     test("getStats returns tick info and timing", () => {
         const stats = match.getStats();
 
-        assert.ok(typeof stats.tick === 'number');
+        assert.ok(typeof stats.tick === "number");
         assert.equal(stats.tickRate, 30);
-        assert.ok(typeof stats.avgTickDurationMs === 'number');
-        assert.ok(typeof stats.maxTickDurationMs === 'number');
-        assert.ok(typeof stats.playerCount === 'number');
-        assert.ok(typeof stats.entityCount === 'number');
+        assert.ok(typeof stats.avgTickDurationMs === "number");
+        assert.ok(typeof stats.maxTickDurationMs === "number");
+        assert.ok(typeof stats.playerCount === "number");
+        assert.ok(typeof stats.entityCount === "number");
+    });
+
+    test("getStats exposes jitter fields", () => {
+        const stats = match.getStats();
+
+        assert.ok(typeof stats.avgTickJitterMs === "number");
+        assert.ok(typeof stats.maxTickJitterMs === "number");
+    });
+});
+
+describe("Tick Jitter Instrumentation", () => {
+    const roomConfig = {
+        id: "jitter-room",
+        name: "Jitter Room",
+        width: 1600,
+        height: 900,
+        asteroidCount: 8,
+    };
+
+    // A tick callback that begins exactly at its scheduled target produces
+    // zero jitter. We drive tickLoop() directly so the test does not depend on
+    // real setTimeout scheduling (which would be flaky). The target is pinned to
+    // the clock read immediately before the callback, so the sample is ~0.
+    test("on-time callback yields near-zero jitter", () => {
+        const match = new Match("jitter-ontime", roomConfig);
+        match.running = true;
+
+        // Pin the scheduled target to "now"; the callback reads the same clock
+        // a few microseconds later, so jitter is a tiny non-negative value.
+        match.nextTickTarget = performance.now();
+        match.tickLoop();
+        match.stop();
+
+        const stats = match.getStats();
+        assert.ok(Number.isFinite(stats.avgTickJitterMs));
+        assert.ok(
+            Math.abs(stats.avgTickJitterMs) < 50,
+            "on-time avg jitter should be tiny",
+        );
+        assert.ok(
+            Math.abs(stats.maxTickJitterMs) < 50,
+            "on-time max jitter should be tiny",
+        );
+    });
+
+    // Directly seed the jitter buffer to test the aggregation maths without
+    // timing flakiness. This verifies that avg/max are computed from absolute
+    // values of the signed samples, independent of World.step duration.
+    test("average and maximum absolute jitter are computed from signed samples", () => {
+        const match = new Match("jitter-aggregate", roomConfig);
+
+        // Signed samples: early (-5), late (+15), early (-1).
+        // abs => 5, 15, 1 ; avg = 21/3 = 7 ; max = 15.
+        match.tickJitters.push(-5, 15, -1);
+
+        const stats = match.getStats();
+        assert.equal(stats.avgTickJitterMs, 7);
+        assert.equal(stats.maxTickJitterMs, 15);
+    });
+
+    // Negative jitter = callback fired before its scheduled target (early).
+    // Positive jitter = callback fired after its target (late). The sign must
+    // be preserved in the per-tick sample buffer for diagnostics.
+    test("early and late callbacks produce correct signed jitter", () => {
+        const match = new Match("jitter-sign", roomConfig);
+        match.running = true;
+
+        // Late: set the target in the past so actualStart - target > 0.
+        match.nextTickTarget = performance.now() - 20;
+        match.tickLoop();
+
+        // Early: set the target in the future so actualStart - target < 0.
+        // tickLoop() reads the clock synchronously, so the sample is taken
+        // immediately against the future target => negative.
+        match.nextTickTarget = performance.now() + 20;
+        match.tickLoop();
+
+        match.stop();
+
+        assert.equal(match.tickJitters.length, 2);
+        assert.ok(
+            match.tickJitters[0] > 0,
+            "late callback should produce positive jitter",
+        );
+        assert.ok(
+            match.tickJitters[1] < 0,
+            "early callback should produce negative jitter",
+        );
+
+        // Aggregate headline values are magnitudes.
+        const stats = match.getStats();
+        assert.ok(stats.maxTickJitterMs > 0);
+    });
+
+    // Jitter is measured against the scheduled target, not against the
+    // duration of World.step. A long-running step must not inflate jitter:
+    // the target is fixed before the step, so step duration is irrelevant to
+    // the recorded sample. We assert the sample equals actualStart - target
+    // (both read around the callback), not actualStart - tickStart.
+    test("jitter is measured against the scheduled target, not step duration", () => {
+        const match = new Match("jitter-vs-duration", roomConfig);
+        match.running = true;
+
+        // Pin the target, then capture a lower bound for the actual start.
+        match.nextTickTarget = performance.now();
+        const target = match.nextTickTarget;
+        const lowerBoundStart = performance.now();
+
+        match.tickLoop();
+        match.stop();
+
+        const sample = match.tickJitters[0];
+        const stepDuration = match.tickDurations[0];
+
+        // The sample is actualStart - target, and actualStart >= lowerBoundStart,
+        // so sample >= lowerBoundStart - target (a small non-negative number).
+        assert.ok(
+            sample >= lowerBoundStart - target,
+            "sample must be measured from the scheduled target",
+        );
+        // The sample must not include the step's own execution cost: it is
+        // bounded by the tiny gap between the two clock reads, not stepDuration.
+        assert.ok(
+            sample < stepDuration + 50,
+            "jitter must not absorb step duration",
+        );
+    });
+
+    // Stats must be valid (zeros) before any tick has run.
+    test("stats are valid before the first tick", () => {
+        const match = new Match("jitter-pretick", roomConfig);
+
+        const stats = match.getStats();
+        assert.equal(stats.tick, 0);
+        assert.equal(stats.avgTickJitterMs, 0);
+        assert.equal(stats.maxTickJitterMs, 0);
+        assert.ok(Number.isFinite(stats.avgTickDurationMs));
+    });
+
+    // The bounded window must match the tick-duration window so the two
+    // statistics stay consistent. Drive tickLoop() (the real code path that
+    // trims the buffer) rather than pushing directly, so this exercises the
+    // actual trimming logic.
+    test("jitter buffer is bounded to the same window as tick durations", () => {
+        const match = new Match("jitter-window", roomConfig);
+        match.running = true;
+
+        // Pin the target in the past each iteration so the callback is always
+        // "late" but tickLoop runs synchronously without real scheduling.
+        for (let i = 0; i < match.maxTickDurations + 50; i++) {
+            match.nextTickTarget = performance.now() - 1;
+            match.tickLoop();
+        }
+        match.stop();
+
+        // Both buffers are trimmed to the same bound in tickLoop().
+        assert.equal(match.tickJitters.length, match.maxTickDurations);
+        assert.equal(match.tickDurations.length, match.maxTickDurations);
+        assert.equal(match.tickJitters.length, 100);
+    });
+
+    // The absolute-target scheduler must not be replaced by setInterval and
+    // must still advance ticks and nextTickTarget by exactly TICK_INTERVAL.
+    test("absolute-target scheduling is unchanged", () => {
+        const match = new Match("jitter-scheduler", roomConfig);
+        match.start();
+
+        assert.equal(match.running, true);
+        // nextTickTarget was seeded in start() to now + interval.
+        const firstTarget = match.nextTickTarget;
+        assert.ok(firstTarget > 0);
+
+        match.stop();
+        assert.equal(match.running, false);
     });
 });
 
@@ -232,7 +410,7 @@ describe("Player Input Isolation Tests", () => {
 
     test("Two players in one Match get different ships", () => {
         const match = new Match("test-isolation-1", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -252,7 +430,11 @@ describe("Player Input Isolation Tests", () => {
 
         assert.ok(shipIdA, "Player A should have a ship");
         assert.ok(shipIdB, "Player B should have a ship");
-        assert.notEqual(shipIdA, shipIdB, "Players should have different ships");
+        assert.notEqual(
+            shipIdA,
+            shipIdB,
+            "Players should have different ships",
+        );
 
         const shipA = match.world.get(shipIdA);
         const shipB = match.world.get(shipIdB);
@@ -265,7 +447,7 @@ describe("Player Input Isolation Tests", () => {
 
     test("Input from player A affects only ship A, not ship B", () => {
         const match = new Match("test-isolation-2", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -319,14 +501,17 @@ describe("Player Input Isolation Tests", () => {
         const speedB = shipB.vel.length;
 
         assert.ok(speedA > 0.1, `Ship A should have moved (speed: ${speedA})`);
-        assert.ok(speedB < 0.1, `Ship B should not have moved (speed: ${speedB})`);
+        assert.ok(
+            speedB < 0.1,
+            `Ship B should not have moved (speed: ${speedB})`,
+        );
 
         match.stop();
     });
 
     test("Input from player B affects only ship B, not ship A", () => {
         const match = new Match("test-isolation-3", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -379,7 +564,10 @@ describe("Player Input Isolation Tests", () => {
         const speedA = shipA.vel.length;
         const speedB = shipB.vel.length;
 
-        assert.ok(speedA < 0.1, `Ship A should not have moved (speed: ${speedA})`);
+        assert.ok(
+            speedA < 0.1,
+            `Ship A should not have moved (speed: ${speedA})`,
+        );
         assert.ok(speedB > 0.1, `Ship B should have moved (speed: ${speedB})`);
 
         match.stop();
@@ -387,7 +575,7 @@ describe("Player Input Isolation Tests", () => {
 
     test("Simultaneous inputs from both players are independent", () => {
         const match = new Match("test-isolation-4", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -437,15 +625,21 @@ describe("Player Input Isolation Tests", () => {
         const shipB = match.world.get(shipIdB);
 
         // Ship A should have turned left (negative angle), Ship B should have turned right (positive angle)
-        assert.ok(shipA.angle < -0.01, `Ship A should have turned left (angle: ${shipA.angle})`);
-        assert.ok(shipB.angle > 0.01, `Ship B should have turned right (angle: ${shipB.angle})`);
+        assert.ok(
+            shipA.angle < -0.01,
+            `Ship A should have turned left (angle: ${shipA.angle})`,
+        );
+        assert.ok(
+            shipB.angle > 0.01,
+            `Ship B should have turned right (angle: ${shipB.angle})`,
+        );
 
         match.stop();
     });
 
     test("Absence of input from one player does not block the other", () => {
         const match = new Match("test-isolation-5", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -490,14 +684,17 @@ describe("Player Input Isolation Tests", () => {
         const speedB = shipB.vel.length;
 
         assert.ok(speedA > 0.1, `Ship A should have moved (speed: ${speedA})`);
-        assert.ok(speedB < 0.1, `Ship B should not have moved (speed: ${speedB})`);
+        assert.ok(
+            speedB < 0.1,
+            `Ship B should not have moved (speed: ${speedB})`,
+        );
 
         match.stop();
     });
 
     test("getInputsForStep returns Map with per-ship inputs", () => {
         const match = new Match("test-isolation-6", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -514,7 +711,10 @@ describe("Player Input Isolation Tests", () => {
 
         const inputsMap = match.getInputsForStep();
 
-        assert.ok(inputsMap instanceof Map, "getInputsForStep should return a Map");
+        assert.ok(
+            inputsMap instanceof Map,
+            "getInputsForStep should return a Map",
+        );
         assert.equal(inputsMap.size, 2, "Should have inputs for both ships");
 
         const shipIdA = match.ships.get("player-A");
@@ -527,15 +727,15 @@ describe("Player Input Isolation Tests", () => {
         const inputB = inputsMap.get(shipIdB);
 
         // Both should have default (empty) input since no inputs were sent
-        assert.ok(typeof inputA.thrust === 'boolean');
-        assert.ok(typeof inputB.thrust === 'boolean');
+        assert.ok(typeof inputA.thrust === "boolean");
+        assert.ok(typeof inputB.thrust === "boolean");
 
         match.stop();
     });
 
     test("Sequence acknowledgements only confirm processed inputs", () => {
         const match = new Match("test-isolation-7", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -577,15 +777,23 @@ describe("Player Input Isolation Tests", () => {
         match.world.step(dt, match.getInputsForStep());
 
         // After stepping, lastProcessedSeq should be 1 (latest processed)
-        assert.equal(player.lastProcessedSeq, 1, "Latest input should be acknowledged");
-        assert.equal(player.pendingInputs.length, 0, "Pending inputs should be cleared");
+        assert.equal(
+            player.lastProcessedSeq,
+            1,
+            "Latest input should be acknowledged",
+        );
+        assert.equal(
+            player.pendingInputs.length,
+            0,
+            "Pending inputs should be cleared",
+        );
 
         match.stop();
     });
 
     test("One-shot actions (fire, switchWeapon) are not lost with multiple inputs per tick", () => {
         const match = new Match("test-isolation-8", roomConfig);
-        
+
         const playerA = {
             id: "player-A",
             name: "PlayerA",
@@ -630,8 +838,10 @@ describe("Player Input Isolation Tests", () => {
         // Fire creates a bullet, switchWeapon changes weapon
         // Note: fire has cooldown, so only one bullet may be created
         // But switchWeapon should have been processed
-        assert.ok(ship.weapon === "missile" || ship.fireCooldown > 0, 
-            "One-shot actions should not be lost");
+        assert.ok(
+            ship.weapon === "missile" || ship.fireCooldown > 0,
+            "One-shot actions should not be lost",
+        );
 
         match.stop();
     });

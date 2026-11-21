@@ -13,6 +13,7 @@
         "build": "npm run build --workspace=@dogfight/client",
         "preview": "npm run preview --workspace=@dogfight/client",
         "lint": "eslint .",
+        "test": "node --test \"client/test/**/*.test.js\" \"server/test/**/*.test.js\" \"shared/test/**/*.test.js\"",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },

@@ -789,6 +789,112 @@ socket.on('error', (error) => {
 
 ---
 
+# Lab 05 — Real-Time Networking: Authoritative Server, Prediction, and Binary Protocols
+
+Лабораторна робота 05 перетворює гру на повноцінну мережову: два браузери, один авторитетний сервер, 30 Hz тики, клієнтське передбачення (prediction) із звіркою (reconciliation), інтерполяція віддалених об'єктів та бінарний протокол на `DataView`. Спільна симуляція винесена в окремий робочий простір `shared/`, який імпортують і клієнт, і сервер.
+
+## M1 — Спільна симуляція, серверний tick, «dumb client»
+
+- `shared/` містить чисту детерміновану симуляцію (`sim/`), seeded PRNG (`mulberry32`), протокол і кодек. Симуляція не використовує DOM, Canvas чи Node-built-ins і однаково працює у браузері та в Node.
+- Сервер (`server/src/match.js`) виконує `World.step` з фіксованим `dt = 1/30` за схемою абсолютного таймера (`nextTickTarget += 1000/30; setTimeout(...)`), що прибирає дрейф і коалесценцію `setInterval`. Кожен тик генерує **snapshot** із `tick`, `serverTime`, `seed`, `entities` та `playerAcks` (останній оброблений `seq` для кожного гравця).
+- Клієнт надсилає **inputs** (ніколи позиції) з `seq`; до появи авторитетного тика передача заблокована (`canSendInput`). Є інжектор латентності (base + jitter + drop, керований `?latency=`) та netgraph-оверлей (RTT, snapshot age, bytes/s, pending inputs, correction magnitude).
+
+## M2 — Передбачення та звірка (prediction + reconciliation)
+
+- Клієнт передбачає власний корабель через той самий `integrate`, що й сервер (`client/src/network/predictor.js`), 60 Hz для плавності.
+- Кожен надісланий input зберігається в pending-буфері за `seq`; на кожному snapshot predicted-стан приводиться до авторитетного стану, а всі ще не підтверджені інпути (`seq > lastProcessedSeq`) відтворюються послідовно з кроком 1/30. Це наближає reconciliation до серверної моделі симуляції, однак не гарантує повної ідентичності, коли сервер обробляє декілька інпутів в одному тику.
+- Корекція згладжується ~100 мс, щоб уникнути ривків (rubber-banding). У netgraph виводиться величина корекції.
+
+## M3 — Інтерполяція та другий гравець
+
+- Віддалені об'єкти (чужі кораблі, кулі, ракети) буферизуються і рендеряться на `interpolationDelay` у минулому (`client/src/network/interpolator.js`), що згладжує 30 Hz snapshots до частоти оновлення дисплея. Затримка (default 100 мс) показується в netgraph і регулюється live клавішами `[` / `]`.
+- Власні локальні кулі передбачаються одразу (`client/src/network/bulletPredictor.js`) і зіставляються з авторитетними за просторовою близькістю (найближча в межах 24 px) з обмеженням one-to-one: одна авторитетна куля може підтвердити лише одну передбачену. Це запобігає повторному підтвердженню тієї самої кулі.
+
+## M4 — Binary protocol and the measurements
+
+### Binary codec (`DataView`)
+
+Реалізовано компактний двійковий кодек для двох високочастотних повідомлень — `input` (client → server) та `snapshot` (server → client): `shared/codec/binaryCodec.js` (`encodeBinary` / `decodeBinary`). Формат **little-endian**, **версійований** (version 1), з квантизацією кута в `Int16` (1/1000 радіана). JSON-кодек (`shared/codec/jsonCodec.js`, `encode`/`decode`) збережено без змін і є транспортом за замовчуванням; бінарний транспорт вмикається прапорцем `?codec=binary` (див. «Transport integration» нижче).
+
+**Схема формату (version 1), bytes:**
+
+`input` (15 B):
+```
+0  Uint8  type=1
+1  Uint8  version=1
+2  Uint32 seq
+6  Uint32 tick
+10 Uint8  flags (bit0 thrust,1 turnLeft,2 turnRight,3 fire,4 switchWeapon)
+11 Int32  clientBulletId (-1 = відсутній)
+```
+
+`snapshot`:
+```
+0  Uint8  type=2
+1  Uint8  version=1
+2  Uint32 tick
+6  Float64 serverTime
+14 Uint32 seed
+18 Int32  score
+22 Uint16 entityCount
+24 Uint16 playerAckCount
+   <entity>[entityCount]
+   <playerAck>[playerAckCount]   // Uint16 len + UTF-8 id + Int32 seq
+```
+
+`<entity>`: `Uint32 id, Uint8 kindCode (1 ship,2 bullet,3 missile,4 asteroid,5 pickup,6 explosion), Uint8 flags(bit0 alive), Float32 x, Float32 y, Int16 angleQ (1/1000 rad, wrap [-π,π]), Float32 radius, Uint8 hp`, далі специфічні поля:
+- `ship`: `Uint8 thrustFlag, Uint8 weaponCode (0 bullet,1 missile), Uint8 missileCount, Float32 fireCooldown, Float32 invulnerabilityTimer`
+- `bullet` / `missile`: `Float32 ttl`
+- `explosion`: `Uint16 particleCount` + per-particle `Float32 x,y,vx,vy,life,maxLife`
+- `asteroid` / `pickup`: без додаткових полів
+
+Round-trip: `decodeBinary(encodeBinary(msg))` відтворює повідомлення в межах квантизації (кут ±0.001 rad, позиції — точність `Float32`). Пошкоджені / обрізані / непідтримувані дані безпечно відхиляються (`CodecError`).
+
+### Transport integration: JSON vs Binary flag
+
+Транспорт **перемкнено** на вибір JSON або Binary через URL-прапорець `?codec=`:
+
+- `?codec=json` (або без прапорця) — **JSON**-транспорт (як у M1–M3). Увесь обмін — JSON text-фрейми.
+- `?codec=binary` — **Binary**-транспорт для data-plane повідомлень.
+
+Поведінка в Binary-режимі:
+- Клієнт встановлює `socket.binaryType = "arraybuffer"`, а `input` кодує через `encodeBinary` (`client/src/network/wire.js`).
+- Сервер декодує вхідні бінарні фрейми через `decodeBinary` і надсилає `snapshot` у бінарному форматі для цього клієнта (`server/src/wire.js`, `sendMessage`).
+- **Control-plane** повідомлення (`join`, `chat`, `leave`, `ping`/`pong`, `joined`, `roster`, `error`) **завжди** залишаються JSON text-фреймами в обох режимах — сумісність не порушується.
+
+Узгодження режиму (mode negotiation): клієнт надсилає бажаний `codec` у `join`; сервер зберігає його на з'єднанні (`socket.transportCodec`) і повертає в `joined`. Snapshot кодується **для кожного отримувача окремо** за його узгодженим режимом, а вхідні фрейми авто-визначаються (бінарний → `decodeBinary`, текст → JSON). Тому два клієнти в одній кімнаті можуть використовувати різні режими без збоїв — кожне з'єднання узгоджує власний режим незалежно. Якщо клієнт просить режим, який сервер не підтримав, `joined.codec` відрізнятиметься, і клієнт виведе попередження в консоль.
+
+Як запустити кожен режим:
+- JSON: відкрити `http://localhost:5173/` (або `?codec=json`).
+- Binary: відкрити `http://localhost:5173/?codec=binary`.
+
+### JSON vs Binary (вимірювання)
+
+Орієнтовні вимірювання (залежать від устаткування та конкретного snapshot) для репрезентативного випадку: 4 кораблі, 8 куль, 6 астероїдів, 1 pickup, 4 playerAcks (19 сутностей); input — один пакет; 30 Hz.
+
+| Codec | Bytes/snapshot | KB/s per client (down) | KB/s per client (up) | Encode+decode |
+|---|---|---|---|---|
+| JSON | 2385 B | 69.9 KB/s | 3.49 KB/s | ~12 µs |
+| Binary (`DataView`) | 669 B | 19.6 KB/s | 0.44 KB/s | ~10 µs |
+
+- Snapshot: бінарний формат у ~3.6× менший (2385 → 669 B).
+- Input: ~8× менший (119 → 15 B).
+- CPU encode+decode для обох форматів порівнянний (основний виграш бінарного — розмір, а не швидкість).
+
+### Netcode write-up
+
+Три проблеми мережової гри та як їх вирішено в цьому проєкті:
+
+1. **Латентність (latency).** При ~80 ms round-trip наївна схема «клієнт відповідає за власну позицію» дає затримку відгуку. Рішення — **client-side prediction**: клієнт одразу застосовує власний input до власного корабля через той самий детермінований `integrate`, що й сервер, тому корабель реагує миттєво.
+2. **Узгодженість (consistency).** Через дрейф чи втрачені пакети клієнти бачать різні світи. Рішення — **authoritative server**: сервер виконує єдину симуляцію з фіксованим `dt = 1/30`, розсилає snapshots, а клієнт надсилає лише inputs. Детермінізм (seeded PRNG, відсутність `Math.random()`/`Date.now()` у sim) гарантує однаковий результат. **Reconciliation** повертає predicted-корабель до авторитетного стану і відтворює непідтверджені інпути; згладжування ховає корекції.
+3. **Читинг (cheating).** Клієнт не може телепортуватися, бо надсилає лише inputs, а сервер валідує їх (`validateInputMessage`, перевірка `seq`, rate limiting) і ніколи не довіряє позиціям клієнта.
+
+**Interpolation trade-off.** Віддалені об'єкти інтерполюються на `interpolationDelay` у минулому (default 100 мс ≈ 3 інтервали snapshot при 30 Hz). Це додає ~100 мс затримки для чужих кораблів, але прибирає 30 Hz смикання (stutter). Затримку можна регулювати live (`[` / `]`) і бачити в netgraph. Наслідок — при стрільбі по «видимій» позиції сервер знає, що ціль уже там немає; це компенсується lag compensation (поза межами лабораторної 05).
+
+**Netgraph** — головний інструмент: RTT (ping/pong), snapshot age, bytes/s in/out, кількість непідтверджених inputs, величина корекції та інтерполяційна затримка. Показники до/після prediction демонструють різницю між «відгук через один round-trip» і «миттєвий відгук із непомітними корекціями у відкритому просторі».
+
+---
+
 # Підсумок лабораторних робіт
 
 У результаті виконання лабораторних робіт створено браузерну гру з клієнтською та серверною частинами.

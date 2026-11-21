@@ -48,10 +48,21 @@ export function parseClientMessage(data) {
                 throw new ProtocolError('Invalid join message');
             }
 
+            // Optional transport codec negotiation (M4). Defaults to JSON so
+            // older clients keep working unchanged.
+            let codec = 'json';
+            if (message.codec !== undefined) {
+                if (message.codec !== 'json' && message.codec !== 'binary') {
+                    throw new ProtocolError('Invalid codec');
+                }
+                codec = message.codec;
+            }
+
             return {
                 type: 'join',
                 roomId: message.roomId.trim(),
                 playerName: message.playerName.trim(),
+                codec,
             };
 
         case 'chat':
@@ -70,6 +81,45 @@ export function parseClientMessage(data) {
 
         case 'leave':
             return { type: 'leave' };
+
+        case 'ping':
+            if (
+                typeof message.timestamp !== 'number' ||
+                !Number.isFinite(message.timestamp) ||
+                message.timestamp < 0 ||
+                typeof message.seq !== 'number' ||
+                !Number.isInteger(message.seq) ||
+                message.seq < 0
+            ) {
+                throw new ProtocolError('Invalid ping message');
+            }
+
+            return {
+                type: 'ping',
+                timestamp: message.timestamp,
+                seq: message.seq,
+            };
+
+        case 'input':
+            if (
+                typeof message.seq !== 'number' ||
+                !Number.isInteger(message.seq) ||
+                message.seq < 0
+            ) {
+                throw new ProtocolError('Invalid input seq');
+            }
+
+            return {
+                type: 'input',
+                seq: message.seq,
+                tick: message.tick,
+                thrust: message.thrust,
+                turnLeft: message.turnLeft,
+                turnRight: message.turnRight,
+                fire: message.fire,
+                switchWeapon: message.switchWeapon,
+                clientBulletId: message.clientBulletId,
+            };
 
         default:
             throw new ProtocolError('Unknown message type');
