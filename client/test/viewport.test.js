@@ -187,10 +187,15 @@ describe("computeWorldViewport", () => {
             }),
         );
 
+        const firstResult = results[0];
+        if (!firstResult) {
+            throw new Error("Expected at least one result");
+        }
+
         for (const result of results) {
-            assert.equal(result.scale, results[0].scale);
-            assert.equal(result.offsetX, results[0].offsetX);
-            assert.equal(result.offsetY, results[0].offsetY);
+            assert.equal(result.scale, firstResult.scale);
+            assert.equal(result.offsetX, firstResult.offsetX);
+            assert.equal(result.offsetY, firstResult.offsetY);
         }
     });
 

@@ -895,6 +895,183 @@ Round-trip: `decodeBinary(encodeBinary(msg))` відтворює повідом�
 
 ---
 
+# Lab 06 — TypeScript Migration
+
+Лабораторна 06 переводить увесь first-party код (shared/, server/, client/) на TypeScript у strict-режимі з повним набором перевірок: `strict: true`, `noUncheckedIndexedAccess: true`, `noPropertyAccessFromIndexSignature: true`, `isolatedModules: true`, `composite: true`. Міграція виконана в три етапи (M1–M3) і не змінює поведінку гри чи протокол.
+
+## Framework Decision — Why Vanilla DOM + Canvas Was Retained
+
+Проєкт спеціально залишив vanilla DOM для lobby/HUD і Canvas 2D для ігрового циклу. Фреймворк (Svelte/Vue/React) **не мігрувався навмисно**. Причини:
+
+- **Розмір пакета:** поточна клієнтська збірка (Vite production build) — ~138 kB (gzipped ~41 kB). Оціночно, додавання фреймворку + runtime збільшило б bundle на ~15–30 kB (gzipped) навіть при tree-shaking.
+- **Складність збирання:** більшість фреймворків потребують Vite plugin, dev server інтеграції, HMR налаштування, TypeScript інтеграції для компонентів. Поточна збірка — один `vite.config.js` без плагінів.
+- **Компоненти lobby/HUD:** ~300 рядків коду (Lobby, LobbyView, netgraph, HUD). Це не оправдовує abstraction cost фреймворку.
+- **Життєвий цикл гри:** Canvas game loop (`requestAnimationFrame`, фіксований `dt`, ручне керування станом) не відображається на компонентну модель фреймворків. Спроба обгорнути Canvas у компонент створює impedance mismatch.
+- Це свідома scope decision, а не незавершена робота. Якщо UI статиме складнішим (editor, replay viewer, складний settings panel), фреймворк можна оцінювати знову.
+
+## What TypeScript Found — Migration Discoveries vs. Type-Safety Improvements
+
+Міграція виявила кілька проблем у наявному коді ( Actual migration discoveries ) та ввів архітектурні покращення ( Type-safety improvements ), яких не було в JavaScript.
+
+### Actual Migration Discoveries (issues in pre-migration code)
+
+| Finding | Evidence | Explanation |
+|---------|----------|-------------|
+| **`ArrayBufferView.buffer` union** | `shared/codec/codec.ts:135,159` — `data.buffer as ArrayBuffer` | TypeScript виявив, що `.buffer` — `ArrayBuffer \| SharedArrayBuffer`. Код не обробляв `SharedArrayBuffer`; assertion прибрала небезпечний доступ. |
+| **Небезпечні `EventTarget.addEventListener` callbacks** | `client/src/input.ts:17,25` — `event as KeyboardEvent` | `EventTarget.addEventListener` передає базовий `Event` (TypeScript типує як `Event`). Доступ до `event.code` вимагає звуження до `KeyboardEvent`. |
+| **Нетипізовані `CustomEvent.detail` для асинхронних handler** | `client/src/main.ts:951` — `handleJoin as unknown as EventListener` | Асинхронний handler не може бути безпечно приведений до `EventListener` без втрати типу payload. Це виявило архітектурний розрив між `EventTarget` і типізованими подіями. |
+
+### Type-Safety Improvements (new architecture, not bug fixes)
+
+| Improvement | Location | What It Enables |
+|-------------|----------|-----------------|
+| **`JSON.parse` як `unknown` + Zod валідація** | `shared/codec/codec.ts:75,88,122,146` | Результат `JSON.parse` обробляється як `unknown` і валідується через Zod перед доступом. Це pattern, а не виправлення багу. |
+| **`catch (error: unknown)` з звуженням** | Сервер та клієнт | TypeScript вимагає `instanceof Error` / property checks перед доступом до `.message`, `.closeCode`. Це strict mode правило. |
+| **Брендовані типи (`EntityId`, `Tick`, `Seq`, `Radians`)** | `shared/sim/branded.ts` | Nominal distinction для структурно-сумісних `number`. Нове архітектурне рішення. |
+| **Дискримінований `EntitySnapshot` union + exhaustiveness** | `shared/sim/entity.ts` | `kind` discriminant + `default: const _exhaustive: never` ловить нові види у `toSnapshot()`/`fromSnapshot()`. |
+| **Типізована шина `Bus<GameEvents>`** | `client/src/events/gameEvents.ts` | Compile-time перевірка імен подій та payload; unsubscribe-функції теж типізовані. Замінює string-based `EventTarget`. |
+
+## Three Interesting Types
+
+### 1. Branded Types — `EntityId`, `Tick`, `Seq`, `Radians`
+
+```ts
+// shared/sim/branded.ts
+declare const __brand: unique symbol;
+export type Branded<T, B extends string> = T & { readonly [__brand]: B };
+
+export type EntityId = Branded<number, "EntityId">;
+export type Tick = Branded<number, "Tick">;
+export type Seq = Branded<number, "Seq">;
+export type Radians = Branded<number, "Radians">;
+
+export function asEntityId(n: number): EntityId { return n as EntityId; }
+// asTick, asSeq, asRadians — аналогічно
+```
+
+**Проблема в JavaScript:** `entityId === tick` — `true`, бо обидва `number`. Плутаниня (передача `tick` там, де очікується `entityId`) не викликає помилку runtime.
+
+**Що дає TypeScript:** `EntityId` не присвоюється `Tick`, `Seq`, чи `Radians` і навпаки. Компілятор ловить `world.get(tick)` (повинно бути `entityId`). У JavaScript це виявилося б лише пізніше як логічна помилка.
+
+**Централізовані конструктори:** `asEntityId(n)` — єдина точка перетворення `number → EntityId`. Усі створення ID проходять через неї (`World.spawn`, десеріалізація в `fromSnapshot`).
+
+---
+
+### 2. Discriminated Union — `EntitySnapshot`
+
+```ts
+// shared/sim/entity.ts
+export type EntitySnapshot =
+  | ShipSnapshot
+  | BulletSnapshot
+  | MissileSnapshot
+  | AsteroidSnapshot
+  | PickupSnapshot
+  | ExplosionSnapshot;
+
+export interface ShipSnapshot extends EntityBase {
+  readonly kind: "ship";
+  readonly thrust: boolean;
+  readonly weapon: "bullet" | "missile";
+  readonly missileCount: number;
+  readonly fireCooldown: number;
+  readonly invulnerabilityTimer: number;
+}
+
+export interface AsteroidSnapshot extends EntityBase {
+  readonly kind: "asteroid";
+  // без додаткових полів
+}
+```
+
+**Exhaustiveness у `toSnapshot()`:**
+```ts
+switch (this.kind) {
+  case "ship":
+    return { ...base, kind: "ship" as const, thrust: this.thrust, ... };
+  case "bullet":
+  case "missile":
+    return { ...base, kind: this.kind, ttl: this.ttl };
+  case "explosion":
+    return { ...base, kind: "explosion" as const, particles: ... };
+  case "asteroid":
+  case "pickup":
+    return { ...base } as EntitySnapshot;  // base вже має правильний kind
+  default: {
+    const _exhaustive: never = this.kind;  // compile-time error якщо новий kind не оброблений
+    return _exhaustive;
+  }
+}
+```
+
+**Проблема:** у JavaScript об'єкти з `kind: "ship"` і `kind: "asteroid"` мають спільні базові поля, але `ship` має `thrust`, `weapon`, `missileCount`, а `asteroid` — ні. Доступ до `snapshot.thrust` без перевірки `kind` дає `undefined`.
+
+**Що дає TypeScript:** перемикання на `snapshot.kind` звужує тип до конкретного інтерфейсу. `default: const _exhaustive: never` гарантує, що додавання нового `kind` без обробки — компіляційна помилка.
+
+---
+
+### 3. Generic Event Bus — `Bus<GameEvents>`
+
+```ts
+// client/src/events/gameEvents.ts
+export interface GameEvents {
+    fired: { readonly weapon: "bullet" | "missile" };
+    hit: { readonly target: "asteroid" };
+    exploded: { readonly target: "asteroid" | "ship" };
+}
+
+export class Bus<TEvents extends { [K in keyof TEvents]: object }> {
+    #listeners = new Map<string, Set<(detail: object) => void>>();
+
+    emit<K extends keyof TEvents>(name: K, detail: TEvents[K]): void { ... }
+    on<K extends keyof TEvents>(name: K, callback: (detail: TEvents[K]) => void): () => void { ... }
+    off<K extends keyof TEvents>(name: K, callback: (detail: TEvents[K]) => void): void { ... }
+}
+
+export const bus = new Bus<GameEvents>();
+```
+
+**Використання:**
+```ts
+// Емітер (ship.ts)
+bus.emit("fired", { weapon: "missile" });  // OK
+bus.emit("fired", { weapon: "laser" });    // ERROR: "laser" не в "bullet" | "missile"
+bus.emit("spawn", { });                     // ERROR: "spawn" не в GameEvents
+
+// Слухач (audio.ts)
+bus.on("fired", (detail) => {              // detail: { readonly weapon: "bullet" | "missile" }
+    playSound(detail.weapon === "missile" ? "missile" : "shot");
+});
+bus.on("hit", (detail) => { ... });         // detail: { readonly target: "asteroid" }
+bus.on("invalid", (detail) => { ... });     // ERROR: "invalid" не в GameEvents
+```
+
+**Розбіжність з `EventTarget`:** стандартний `EventTarget` типує `addEventListener(type: string, listener: EventListenerOrEventListenerObject)` — імена подій і payload не перевіряються. `Bus<GameEvents>` прив'язує кожне ім'я події до точного payload через `GameEvents` map. Невалідне ім'я, неправильний payload, або слухач для неіснуючої події — compile-time error. Повернені unsubscribe-функції теж типізовані.
+
+---
+
+## M3 Acceptance Status (Grouped Requirements Summary)
+
+| Requirement | Status |
+|-------------|--------|
+| Typed `Bus<GameEvents>` | ✅ |
+| Typed `Room extends EventEmitter<RoomEvents>` | ✅ |
+| Zod `ServerConfig` with env parsing | ✅ |
+| Unknown-safe catch handling | ✅ |
+| Strict TS config in all packages | ✅ |
+| Vite entry point `main.ts` | ✅ |
+| Root typecheck includes all packages | ✅ |
+| CI runs `npm ci` + `npm run typecheck` | ✅ |
+| Build/lint pass | ✅ |
+| Regression suite (308/308) | ⚠️ tests still target the legacy `.js` implementations |
+| `<5` type assertions | ❌ (52 regular + 1 double — see forensic audit) |
+
+> Таблиця згруповує декілька окремих критеріїв прийняття в один рядок. Оригінальний M3 мав більше деталізованих пунктів; ця таблиця — підсумок.
+
+> **Обмеження тестового прогону:** `npm test` виконує 308 тестів, але 15 наявних тестових файлів імпортують legacy `.js` реалізації (`client/src/**/*.js`, `server/src/**/*.js`, `shared/**/*.js`), а не TypeScript-джерела. Отже, цей прогін **не доводить**, що саме `.ts` реалізації проходять регресійний набір. Node 24 `--experimental-strip-types` виконує `.ts`, але не переписує `.js`-специфікатори імпорту на `.ts` (107 імпортів у TS-коді), а `shared` package exports вказує на `dist/`, який потребує попередньої збірки. Повний перехід тестів на TypeScript — окрема інфраструктурна задача.
+
+---
+
 # Підсумок лабораторних робіт
 
 У результаті виконання лабораторних робіт створено браузерну гру з клієнтською та серверною частинами.
