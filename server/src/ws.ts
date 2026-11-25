@@ -19,11 +19,18 @@ import {
 import { parseClientMessage, ProtocolError } from "@dogfight/shared";
 import type { Match, PlayerJoinData } from "./match.js";
 import type { RoomConfig } from "./rooms.js";
+import { config, isOriginAllowed, parseAllowedOrigins } from "./config.js";
+import { logger, childLogger, LogContext } from "./logger.js";
+import {
+    incrementConnectedPlayers,
+    incrementActiveRooms,
+    recordMessageIn,
+    recordMessageOut,
+    recordRejection,
+} from "./metrics.js";
 
 /** Type guard for join messages (only valid for JSON-mode messages). */
-function isJoinMessage(
-    msg: WireClientMessage,
-): msg is WireClientMessage & {
+function isJoinMessage(msg: WireClientMessage): msg is WireClientMessage & {
     roomId: string;
     playerName: string;
     codec: "json" | "binary";
@@ -47,10 +54,52 @@ const INPUT_RATE_BURST = 20;
 const CONTROL_RATE_LIMIT = 10;
 const CONTROL_RATE_BURST = 20;
 
-const MAX_PLAYERS_PER_ROOM = 8;
-const MAX_ROOMS = 100;
-
 const MAX_BUFFERED_AMOUNT = 1024 * 1024;
+
+// Per-IP connection tracking for connection caps.
+const connectionsByIp = new Map<string, Set<WebSocket>>();
+
+function normalizeIp(ip: string | null | undefined): string {
+    if (!ip) return "unknown";
+
+    // Normalize IPv4-mapped IPv6 addresses (::ffff:192.168.1.1 -> 192.168.1.1)
+    if (ip.startsWith("::ffff:")) {
+        return ip.slice(7);
+    }
+
+    return ip;
+}
+
+function getClientIp(request: import("http").IncomingMessage): string {
+    // Use the socket's remote address. X-Forwarded-For is not trusted by
+    // default; only enable it when an explicit reverse-proxy trust model is
+    // configured in front of this server.
+    return normalizeIp(request.socket.remoteAddress);
+}
+
+function addConnection(ip: string, socket: WebSocket): void {
+    let set = connectionsByIp.get(ip);
+    if (!set) {
+        set = new Set();
+        connectionsByIp.set(ip, set);
+    }
+    set.add(socket);
+}
+
+function removeConnection(ip: string, socket: WebSocket): void {
+    const set = connectionsByIp.get(ip);
+    if (!set) return;
+
+    set.delete(socket);
+    if (set.size === 0) {
+        connectionsByIp.delete(ip);
+    }
+}
+
+function connectionCountForIp(ip: string): number {
+    const set = connectionsByIp.get(ip);
+    return set ? set.size : 0;
+}
 
 // Extended properties stored separately to avoid WebSocket type conflicts
 interface SocketExtensions {
@@ -87,23 +136,64 @@ export function setupWebSocket(
     server: import("http").Server,
     { loadRooms = getRooms, now = () => Date.now() } = {},
 ) {
+    const allowedOrigins = parseAllowedOrigins(config.allowedOrigins);
+
     const wss = new WebSocketServer({
         server,
         path: "/ws",
         maxPayload: 16 * 1024,
+
+        // Origin verification: reject browser connections from unapproved origins.
+        // A value of "*" allows all origins (suitable for local development).
+        // In production, set ALLOWED_ORIGINS to a comma-separated list of
+        // trusted origins (e.g. https://dogfight.example.com).
+        verifyClient: (info: {
+            origin: string | null;
+            req: import("http").IncomingMessage;
+        }) => {
+            const origin = info.origin ?? null;
+            const allowed = isOriginAllowed(origin);
+
+            if (!allowed) {
+                recordRejection("origin");
+                logger.warn(
+                    { origin, ip: getClientIp(info.req) },
+                    "WebSocket origin rejected",
+                );
+                return false;
+            }
+
+            // Per-IP connection cap
+            const ip = getClientIp(info.req);
+            if (connectionCountForIp(ip) >= config.maxConnectionsPerIp) {
+                recordRejection("per_ip_cap");
+                logger.warn(
+                    { ip, limit: config.maxConnectionsPerIp },
+                    "WebSocket per-IP connection cap exceeded",
+                );
+                return false;
+            }
+
+            return true;
+        },
     });
 
     wss.on(
         "connection",
         (socket: WebSocket, request: import("http").IncomingMessage) => {
-            console.log("WebSocket client connected");
+            const ip = getClientIp(request);
+            addConnection(ip, socket);
+            incrementConnectedPlayers(1);
 
-            // Initialize socket extensions
             const ext = getExt(socket);
             ext.player = null;
             ext.match = null;
             ext.missedPongs = 0;
             ext.transportCodec = TRANSPORT_JSON;
+
+            const log = childLogger({ roomId: undefined, playerId: undefined });
+
+            log.info({ ip }, "WebSocket client connected");
 
             // Parse latency configuration from request URL
             const requestUrl = request.url ?? "";
@@ -138,7 +228,8 @@ export function setupWebSocket(
 
             const joinTimeout = setTimeout(() => {
                 if (!joined) {
-                    console.log("Join timeout");
+                    log.info("Join timeout");
+                    recordRejection("join_timeout");
                     socket.close(1008, "Join timeout");
                 }
             }, JOIN_TIMEOUT);
@@ -146,6 +237,14 @@ export function setupWebSocket(
             socket.on("pong", () => {
                 getExt(socket).missedPongs = 0;
             });
+
+            function recordMessage(bytes: number, isIncoming: boolean): void {
+                if (isIncoming) {
+                    recordMessageIn(bytes);
+                } else {
+                    recordMessageOut(bytes);
+                }
+            }
 
             function handleMessage(
                 s: WebSocket,
@@ -155,42 +254,36 @@ export function setupWebSocket(
                 let message: WireClientMessage;
 
                 try {
-                    // M4: binary frames carry an input (binary codec); text frames
-                    // are JSON control-plane messages (or JSON-mode inputs).
                     const decoded = decodeClientFrame(rawData, isBinary);
                     if (!decoded) {
-                        // Malformed frame - treat as protocol error
                         throw new Error("Invalid message format");
                     }
                     message = decoded;
                 } catch (error: unknown) {
-                    // Malformed and unknown messages still consume a control token
-                    // so a client cannot bypass rate limiting by sending garbage.
                     if (!controlBucket.consume()) {
-                        console.log("Rate limit exceeded");
+                        log.info("Rate limit exceeded");
+                        recordRejection("rate_limit");
                         s.close(1008, "Rate limit exceeded");
                         return;
                     }
 
-                    console.error("Invalid WebSocket message:", error);
+                    logger.error(error, "Invalid WebSocket message");
                     const err =
                         error instanceof Error
                             ? error
                             : new Error(String(error));
-                    // ProtocolError has closeCode; narrow safely.
                     const closeCode =
                         error instanceof ProtocolError ? error.closeCode : 1008;
                     s.close(closeCode, err.message);
                     return;
                 }
 
-                // Select the bucket by message category: input traffic is the hot
-                // path and must not be throttled by control traffic (or vice versa).
                 const bucket =
                     message.type === "input" ? inputBucket : controlBucket;
 
                 if (!bucket.consume()) {
-                    console.log("Rate limit exceeded");
+                    log.info("Rate limit exceeded");
+                    recordRejection("rate_limit");
                     s.close(1008, "Rate limit exceeded");
                     return;
                 }
@@ -201,7 +294,6 @@ export function setupWebSocket(
                         return;
                     }
 
-                    // Get room config from rooms.json
                     let roomConfig: RoomConfig | null = null;
                     loadRooms()
                         .then((rooms: RoomConfig[]) => {
@@ -214,7 +306,7 @@ export function setupWebSocket(
                             handleJoin(roomConfig, message);
                         })
                         .catch((err) => {
-                            console.error("Failed to get rooms:", err);
+                            logger.error(err, "Failed to get rooms");
                             s.close(1008, "Server error");
                         });
 
@@ -232,22 +324,20 @@ export function setupWebSocket(
                             return;
                         }
 
-                        // The peer may have disconnected while rooms were loading.
-                        // Registering a player for a closed socket would leak a
-                        // permanent ghost player and consume room capacity.
                         if (s.readyState !== WebSocket.OPEN) {
                             return;
                         }
 
                         let match = roomManager.getMatch(joinMsg.roomId);
 
-                        // Maximum rooms per server
-                        if (!match && roomManager.matches.size >= MAX_ROOMS) {
+                        if (
+                            !match &&
+                            roomManager.matches.size >= config.maxRooms
+                        ) {
                             s.close(1008, "Server room limit reached");
                             return;
                         }
 
-                        // Create match if necessary
                         if (!match) {
                             match = roomManager.createMatch(
                                 joinMsg.roomId,
@@ -271,8 +361,7 @@ export function setupWebSocket(
                             return;
                         }
 
-                        // Maximum players per room
-                        if (match.players.size >= MAX_PLAYERS_PER_ROOM) {
+                        if (match.players.size >= config.maxPlayersPerRoom) {
                             s.close(1008, "Room is full");
                             return;
                         }
@@ -285,8 +374,6 @@ export function setupWebSocket(
                         };
                         sExt.player = player;
 
-                        // M4: negotiate this connection's data-plane codec. Must be
-                        // set before the first snapshot can be sent to this socket.
                         sExt.transportCodec = normalizeCodec(joinMsg.codec);
 
                         const added = match.addPlayer(player);
@@ -299,17 +386,20 @@ export function setupWebSocket(
                         sExt.match = match;
                         joined = true;
 
-                        // Start the tick loop once the first player is registered.
-                        // Match.start() is idempotent, and subsequent players must
-                        // not create another loop.
                         if (match.players.size === 1) {
                             match.start();
                         }
 
                         clearTimeout(joinTimeout);
 
-                        console.log(
-                            `Player ${sExt.player.name} joined match ${match.id}`,
+                        const playerLog = childLogger({
+                            roomId: match.id,
+                            playerId: player.id,
+                        });
+
+                        playerLog.info(
+                            { playerName: player.name, roomId: match.id },
+                            "Player joined match",
                         );
 
                         sendMessage(s, {
@@ -317,10 +407,7 @@ export function setupWebSocket(
                             playerId: sExt.player.id,
                             seed: match.getSeed(),
                             roomConfig: match.getRoomConfig(),
-                            // Player was just added to match, ship must exist.
                             shipId: match.ships.get(sExt.player.id) ?? 0,
-                            // M4: echo the negotiated transport codec so the client
-                            // can verify its request was honoured.
                             codec: sExt.transportCodec,
                         } satisfies import("@dogfight/shared").ServerMessage);
 
@@ -335,22 +422,18 @@ export function setupWebSocket(
                 }
 
                 if (message.type === "input") {
-                    // Validate input message using Zod-based parser (returns Result, never throws)
                     const result = parseClientMessage(message);
                     if (!result.success) {
-                        console.error("Invalid input message:", result.error);
-                        const closeCode = 1008;
-                        s.close(closeCode, "Invalid input message");
+                        logger.error(result.error, "Invalid input message");
+                        s.close(1008, "Invalid input message");
                         return;
                     }
                     const validatedInput = result.data;
-                    // Narrow to InputMessage since we checked message.type === "input" above
                     if (validatedInput.type !== "input") {
                         s.close(1008, "Expected input message");
                         return;
                     }
 
-                    // Forward to match
                     const sExt = getExt(s);
                     if (sExt.match && sExt.player) {
                         sExt.match.handleInput(sExt.player.id, validatedInput);
@@ -379,16 +462,12 @@ export function setupWebSocket(
                 if (message.type === "leave") {
                     const sExt = getExt(s);
                     if (sExt.player) {
-                        console.log(`Player ${sExt.player.name} left`);
+                        log.info(`Player ${sExt.player.name} left`);
                     }
                     s.close(1000, "Player left");
                 }
 
                 if (message.type === "ping") {
-                    // Respond to ping with pong, echoing the timestamp and seq
-                    // This is for client-side RTT measurement. Route pong through
-                    // the downstream queue so it experiences the same downstream
-                    // latency as snapshots (otherwise RTT only reflects upstream).
                     downstreamQueue.enqueue(
                         {
                             type: "pong",
@@ -406,11 +485,11 @@ export function setupWebSocket(
             }
 
             socket.on("message", (data: Buffer, isBinary: boolean) => {
-                // M4: capture isBinary so the decode path (binary vs JSON) and the
-                // latency-injector type hint survive queueing. A binary upstream
-                // frame is always an input, so it is classified as "input" and
-                // remains in the never-drop set even though the injector cannot
-                // JSON-sniff a binary payload.
+                const byteLength =
+                    data instanceof Buffer ? data.byteLength : data.length;
+
+                recordMessage(byteLength, true);
+
                 upstreamQueue.enqueue(
                     data,
                     (s: WebSocket, rawData: unknown) =>
@@ -425,7 +504,10 @@ export function setupWebSocket(
             });
 
             socket.on("close", () => {
-                console.log("WebSocket client disconnected");
+                removeConnection(ip, socket);
+                incrementConnectedPlayers(-1);
+
+                log.info("WebSocket client disconnected");
 
                 clearTimeout(joinTimeout);
 
@@ -440,7 +522,7 @@ export function setupWebSocket(
             });
 
             socket.on("error", (error: Error) => {
-                console.error("WebSocket error:", error);
+                logger.error(error, "WebSocket error");
             });
         },
     );
@@ -455,7 +537,7 @@ export function setupWebSocket(
             ext.missedPongs += 1;
 
             if (ext.missedPongs >= 2) {
-                console.log("Terminating unresponsive WebSocket client");
+                logger.info("Terminating unresponsive WebSocket client");
                 socket.terminate();
                 continue;
             }
@@ -471,6 +553,32 @@ export function setupWebSocket(
     return wss;
 }
 
+/**
+ * Notify all connected WebSocket clients that the server is shutting down,
+ * then close each connection with code 1001 so clients can reconnect.
+ */
+export function notifyShutdown(wss: WebSocketServer): void {
+    const shutdownMsg = JSON.stringify({
+        type: "shutdown",
+        reason: "server shutting down",
+    });
+
+    for (const socket of wss.clients) {
+        if (socket.readyState === WebSocket.OPEN) {
+            try {
+                socket.send(shutdownMsg);
+            } catch {
+                // Ignore send errors during shutdown.
+            }
+            try {
+                socket.close(1001, "server shutting down");
+            } catch {
+                // Ignore close errors during shutdown.
+            }
+        }
+    }
+}
+
 function sendMessage(
     socket: WebSocket,
     message: import("@dogfight/shared").ServerMessage,
@@ -480,29 +588,31 @@ function sendMessage(
     }
 
     if (socket.bufferedAmount > MAX_BUFFERED_AMOUNT) {
-        console.log("Slow client detected, closing connection");
+        logger.info("Slow client detected, closing connection");
         socket.close(1013, "Client too slow");
         return false;
     }
 
-    // M4: encode the message for this recipient's negotiated transport codec.
-    // Only `snapshot` is binary-encoded; all other message types stay JSON.
     const ext = getExt(socket);
     const payload = encodeServerMessage(message, ext.transportCodec);
 
+    const byteLength =
+        payload instanceof Buffer ? payload.byteLength : payload.length;
+
     const callback = (err: Error | null) => {
         if (err) {
-            console.error("WebSocket send error:", err);
+            logger.error(err, "WebSocket send error");
         }
     };
 
-    // Workaround for ws overload resolution: cast to avoid callback/options ambiguity
     (
         socket.send as (
             data: string | Buffer,
             cb?: (err: Error | null) => void,
         ) => boolean
     )(payload, callback);
+
+    recordMessageOut(byteLength);
 
     return true;
 }

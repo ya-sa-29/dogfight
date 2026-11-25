@@ -850,6 +850,19 @@ async function bootstrap(): Promise<void> {
         const lobbyView = new LobbyView(lobby);
         lobbyView.show();
 
+        // Fetch server version and display in lobby HUD
+        try {
+            const health = await fetch("/health");
+            if (health.ok) {
+                const data = await health.json();
+                if (data && typeof data === "object" && "version" in data) {
+                    lobbyView.setVersion(String(data["version"]));
+                }
+            }
+        } catch {
+            // Version fetch is non-fatal; lobby works without it.
+        }
+
         const handleJoin = async (
             event: CustomEvent<{
                 room: {

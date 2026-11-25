@@ -1,0 +1,21 @@
+{
+    "name": "Dogfight",
+    "short_name": "Dogfight",
+    "description": "Multiplayer browser dogfighting game — Canvas 2D, WebSocket, authoritative server.",
+    "start_url": "/",
+    "display": "standalone",
+    "orientation": "landscape",
+    "background_color": "#23212c",
+    "theme_color": "#23212c",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["games", "action"],
+    "lang": "en",
+    "prefer_related_applications": false
+}

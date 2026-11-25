@@ -121,11 +121,11 @@ Lobby отримує список кімнат через HTTP API `GET /api/roo
 
 Кімнати мають різні параметри:
 
-| Кімната | Розмір арени | Кількість астероїдів |
-|---|---:|---:|
-| Training Arena | 1600 × 900 | 8 |
-| Combat Zone | 2400 × 1400 | 18 |
-| Survival | 3000 × 1800 | 30 |
+| Кімната        | Розмір арени | Кількість астероїдів |
+| -------------- | -----------: | -------------------: |
+| Training Arena |   1600 × 900 |                    8 |
+| Combat Zone    |  2400 × 1400 |                   18 |
+| Survival       |  3000 × 1800 |                   30 |
 
 ### Ігрова симуляція
 
@@ -415,13 +415,13 @@ SyntaxError: Expected double-quoted property name in JSON
 
 ### HTTP API
 
-| Метод | Маршрут | Призначення |
-|---|---|---|
-| GET | `/health` | Перевірка стану сервера |
-| GET | `/api/rooms` | Отримання списку кімнат |
-| POST | `/api/rooms` | Створення нової кімнати |
-| GET | `/api/replays/:id` | Потокове отримання запису матчу |
-| GET | `/api/slow` | Демонстрація блокування Event Loop |
+| Метод | Маршрут            | Призначення                        |
+| ----- | ------------------ | ---------------------------------- |
+| GET   | `/health`          | Перевірка стану сервера            |
+| GET   | `/api/rooms`       | Отримання списку кімнат            |
+| POST  | `/api/rooms`       | Створення нової кімнати            |
+| GET   | `/api/replays/:id` | Потокове отримання запису матчу    |
+| GET   | `/api/slow`        | Демонстрація блокування Event Loop |
 
 `POST /api/rooms` перевіряє отримані дані перед створенням кімнати. Розмір тіла запиту обмежений, а некоректні дані відхиляються.
 
@@ -582,12 +582,12 @@ pipeline(createReadStream(filePath), res);
 
 Результати вимірювань RSS:
 
-| Показник | Значення |
-|---|---:|
-| Середнє використання пам'яті | 58,53 MiB |
-| Мінімальне використання пам'яті | 47,65 MiB |
+| Показник                         |  Значення |
+| -------------------------------- | --------: |
+| Середнє використання пам'яті     | 58,53 MiB |
+| Мінімальне використання пам'яті  | 47,65 MiB |
 | Максимальне використання пам'яті | 69,95 MiB |
-| Діапазон вимірювань | 22,3 MiB |
+| Діапазон вимірювань              |  22,3 MiB |
 
 ![Node.js server RSS during 200 MiB replay download](docs/rss-graph.png)
 
@@ -623,10 +623,10 @@ WebSocket-сервер використовує `maxPayload` зі значенн
 
 Встановлено такі обмеження:
 
-| Параметр | Ліміт |
-|---|---:|
-| Гравці в одній кімнаті | 8 |
-| Кімнати на сервері | 100 |
+| Параметр               | Ліміт |
+| ---------------------- | ----: |
+| Гравці в одній кімнаті |     8 |
+| Кімнати на сервері     |   100 |
 
 Якщо кімната заповнена або досягнуто загального ліміту кімнат, сервер відхиляє нове підключення до відповідного ресурсу.
 
@@ -669,15 +669,15 @@ while (Date.now() - start < 300) {
 ```js
 const start = Date.now();
 
-fetch('/api/slow');
+fetch("/api/slow");
 
 setTimeout(() => {
     window.gameConnection.send({
-        type: 'chat',
-        message: 'Testing Event Loop blocking!'
+        type: "chat",
+        message: "Testing Event Loop blocking!",
     });
 
-    console.log('Chat sent after:', Date.now() - start, 'ms');
+    console.log("Chat sent after:", Date.now() - start, "ms");
 }, 50);
 ```
 
@@ -739,8 +739,8 @@ Error: Something went wrong in EventEmitter
 **Виправлення:** необхідно зареєструвати обробник події `error`.
 
 ```js
-emitter.on('error', (error) => {
-    console.error('Emitter error:', error);
+emitter.on("error", (error) => {
+    console.error("Emitter error:", error);
 });
 ```
 
@@ -767,10 +767,9 @@ Error: Something went wrong in Promise
 **Виправлення:** необхідно обробляти відхилення Promise.
 
 ```js
-Promise.reject(new Error('Something went wrong'))
-    .catch((error) => {
-        console.error('Promise error:', error);
-    });
+Promise.reject(new Error("Something went wrong")).catch((error) => {
+    console.error("Promise error:", error);
+});
 ```
 
 Або використовувати `try/catch` під час роботи з `async/await`.
@@ -780,8 +779,8 @@ Promise.reject(new Error('Something went wrong'))
 У WebSocket-сервері для кожного підключення зареєстровано обробник:
 
 ```js
-socket.on('error', (error) => {
-    console.error('WebSocket error:', error);
+socket.on("error", (error) => {
+    console.error("WebSocket error:", error);
 });
 ```
 
@@ -821,6 +820,7 @@ socket.on('error', (error) => {
 **Схема формату (version 1), bytes:**
 
 `input` (15 B):
+
 ```
 0  Uint8  type=1
 1  Uint8  version=1
@@ -831,6 +831,7 @@ socket.on('error', (error) => {
 ```
 
 `snapshot`:
+
 ```
 0  Uint8  type=2
 1  Uint8  version=1
@@ -845,6 +846,7 @@ socket.on('error', (error) => {
 ```
 
 `<entity>`: `Uint32 id, Uint8 kindCode (1 ship,2 bullet,3 missile,4 asteroid,5 pickup,6 explosion), Uint8 flags(bit0 alive), Float32 x, Float32 y, Int16 angleQ (1/1000 rad, wrap [-π,π]), Float32 radius, Uint8 hp`, далі специфічні поля:
+
 - `ship`: `Uint8 thrustFlag, Uint8 weaponCode (0 bullet,1 missile), Uint8 missileCount, Float32 fireCooldown, Float32 invulnerabilityTimer`
 - `bullet` / `missile`: `Float32 ttl`
 - `explosion`: `Uint16 particleCount` + per-particle `Float32 x,y,vx,vy,life,maxLife`
@@ -860,6 +862,7 @@ Round-trip: `decodeBinary(encodeBinary(msg))` відтворює повідом�
 - `?codec=binary` — **Binary**-транспорт для data-plane повідомлень.
 
 Поведінка в Binary-режимі:
+
 - Клієнт встановлює `socket.binaryType = "arraybuffer"`, а `input` кодує через `encodeBinary` (`client/src/network/wire.js`).
 - Сервер декодує вхідні бінарні фрейми через `decodeBinary` і надсилає `snapshot` у бінарному форматі для цього клієнта (`server/src/wire.js`, `sendMessage`).
 - **Control-plane** повідомлення (`join`, `chat`, `leave`, `ping`/`pong`, `joined`, `roster`, `error`) **завжди** залишаються JSON text-фреймами в обох режимах — сумісність не порушується.
@@ -867,6 +870,7 @@ Round-trip: `decodeBinary(encodeBinary(msg))` відтворює повідом�
 Узгодження режиму (mode negotiation): клієнт надсилає бажаний `codec` у `join`; сервер зберігає його на з'єднанні (`socket.transportCodec`) і повертає в `joined`. Snapshot кодується **для кожного отримувача окремо** за його узгодженим режимом, а вхідні фрейми авто-визначаються (бінарний → `decodeBinary`, текст → JSON). Тому два клієнти в одній кімнаті можуть використовувати різні режими без збоїв — кожне з'єднання узгоджує власний режим незалежно. Якщо клієнт просить режим, який сервер не підтримав, `joined.codec` відрізнятиметься, і клієнт виведе попередження в консоль.
 
 Як запустити кожен режим:
+
 - JSON: відкрити `http://localhost:5173/` (або `?codec=json`).
 - Binary: відкрити `http://localhost:5173/?codec=binary`.
 
@@ -874,10 +878,10 @@ Round-trip: `decodeBinary(encodeBinary(msg))` відтворює повідом�
 
 Орієнтовні вимірювання (залежать від устаткування та конкретного snapshot) для репрезентативного випадку: 4 кораблі, 8 куль, 6 астероїдів, 1 pickup, 4 playerAcks (19 сутностей); input — один пакет; 30 Hz.
 
-| Codec | Bytes/snapshot | KB/s per client (down) | KB/s per client (up) | Encode+decode |
-|---|---|---|---|---|
-| JSON | 2385 B | 69.9 KB/s | 3.49 KB/s | ~12 µs |
-| Binary (`DataView`) | 669 B | 19.6 KB/s | 0.44 KB/s | ~10 µs |
+| Codec               | Bytes/snapshot | KB/s per client (down) | KB/s per client (up) | Encode+decode |
+| ------------------- | -------------- | ---------------------- | -------------------- | ------------- |
+| JSON                | 2385 B         | 69.9 KB/s              | 3.49 KB/s            | ~12 µs        |
+| Binary (`DataView`) | 669 B          | 19.6 KB/s              | 0.44 KB/s            | ~10 µs        |
 
 - Snapshot: бінарний формат у ~3.6× менший (2385 → 669 B).
 - Input: ~8× менший (119 → 15 B).
@@ -917,21 +921,21 @@ Round-trip: `decodeBinary(encodeBinary(msg))` відтворює повідом�
 
 ### Actual Migration Discoveries (issues in pre-migration code)
 
-| Finding | Evidence | Explanation |
-|---------|----------|-------------|
-| **`ArrayBufferView.buffer` union** | `shared/codec/codec.ts:135,159` — `data.buffer as ArrayBuffer` | TypeScript виявив, що `.buffer` — `ArrayBuffer \| SharedArrayBuffer`. Код не обробляв `SharedArrayBuffer`; assertion прибрала небезпечний доступ. |
-| **Небезпечні `EventTarget.addEventListener` callbacks** | `client/src/input.ts:17,25` — `event as KeyboardEvent` | `EventTarget.addEventListener` передає базовий `Event` (TypeScript типує як `Event`). Доступ до `event.code` вимагає звуження до `KeyboardEvent`. |
+| Finding                                                       | Evidence                                                            | Explanation                                                                                                                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`ArrayBufferView.buffer` union**                            | `shared/codec/codec.ts:135,159` — `data.buffer as ArrayBuffer`      | TypeScript виявив, що `.buffer` — `ArrayBuffer \| SharedArrayBuffer`. Код не обробляв `SharedArrayBuffer`; assertion прибрала небезпечний доступ.                          |
+| **Небезпечні `EventTarget.addEventListener` callbacks**       | `client/src/input.ts:17,25` — `event as KeyboardEvent`              | `EventTarget.addEventListener` передає базовий `Event` (TypeScript типує як `Event`). Доступ до `event.code` вимагає звуження до `KeyboardEvent`.                          |
 | **Нетипізовані `CustomEvent.detail` для асинхронних handler** | `client/src/main.ts:951` — `handleJoin as unknown as EventListener` | Асинхронний handler не може бути безпечно приведений до `EventListener` без втрати типу payload. Це виявило архітектурний розрив між `EventTarget` і типізованими подіями. |
 
 ### Type-Safety Improvements (new architecture, not bug fixes)
 
-| Improvement | Location | What It Enables |
-|-------------|----------|-----------------|
-| **`JSON.parse` як `unknown` + Zod валідація** | `shared/codec/codec.ts:75,88,122,146` | Результат `JSON.parse` обробляється як `unknown` і валідується через Zod перед доступом. Це pattern, а не виправлення багу. |
-| **`catch (error: unknown)` з звуженням** | Сервер та клієнт | TypeScript вимагає `instanceof Error` / property checks перед доступом до `.message`, `.closeCode`. Це strict mode правило. |
-| **Брендовані типи (`EntityId`, `Tick`, `Seq`, `Radians`)** | `shared/sim/branded.ts` | Nominal distinction для структурно-сумісних `number`. Нове архітектурне рішення. |
-| **Дискримінований `EntitySnapshot` union + exhaustiveness** | `shared/sim/entity.ts` | `kind` discriminant + `default: const _exhaustive: never` ловить нові види у `toSnapshot()`/`fromSnapshot()`. |
-| **Типізована шина `Bus<GameEvents>`** | `client/src/events/gameEvents.ts` | Compile-time перевірка імен подій та payload; unsubscribe-функції теж типізовані. Замінює string-based `EventTarget`. |
+| Improvement                                                 | Location                              | What It Enables                                                                                                             |
+| ----------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **`JSON.parse` як `unknown` + Zod валідація**               | `shared/codec/codec.ts:75,88,122,146` | Результат `JSON.parse` обробляється як `unknown` і валідується через Zod перед доступом. Це pattern, а не виправлення багу. |
+| **`catch (error: unknown)` з звуженням**                    | Сервер та клієнт                      | TypeScript вимагає `instanceof Error` / property checks перед доступом до `.message`, `.closeCode`. Це strict mode правило. |
+| **Брендовані типи (`EntityId`, `Tick`, `Seq`, `Radians`)**  | `shared/sim/branded.ts`               | Nominal distinction для структурно-сумісних `number`. Нове архітектурне рішення.                                            |
+| **Дискримінований `EntitySnapshot` union + exhaustiveness** | `shared/sim/entity.ts`                | `kind` discriminant + `default: const _exhaustive: never` ловить нові види у `toSnapshot()`/`fromSnapshot()`.               |
+| **Типізована шина `Bus<GameEvents>`**                       | `client/src/events/gameEvents.ts`     | Compile-time перевірка імен подій та payload; unsubscribe-функції теж типізовані. Замінює string-based `EventTarget`.       |
 
 ## Three Interesting Types
 
@@ -947,7 +951,9 @@ export type Tick = Branded<number, "Tick">;
 export type Seq = Branded<number, "Seq">;
 export type Radians = Branded<number, "Radians">;
 
-export function asEntityId(n: number): EntityId { return n as EntityId; }
+export function asEntityId(n: number): EntityId {
+    return n as EntityId;
+}
 // asTick, asSeq, asRadians — аналогічно
 ```
 
@@ -964,29 +970,30 @@ export function asEntityId(n: number): EntityId { return n as EntityId; }
 ```ts
 // shared/sim/entity.ts
 export type EntitySnapshot =
-  | ShipSnapshot
-  | BulletSnapshot
-  | MissileSnapshot
-  | AsteroidSnapshot
-  | PickupSnapshot
-  | ExplosionSnapshot;
+    | ShipSnapshot
+    | BulletSnapshot
+    | MissileSnapshot
+    | AsteroidSnapshot
+    | PickupSnapshot
+    | ExplosionSnapshot;
 
 export interface ShipSnapshot extends EntityBase {
-  readonly kind: "ship";
-  readonly thrust: boolean;
-  readonly weapon: "bullet" | "missile";
-  readonly missileCount: number;
-  readonly fireCooldown: number;
-  readonly invulnerabilityTimer: number;
+    readonly kind: "ship";
+    readonly thrust: boolean;
+    readonly weapon: "bullet" | "missile";
+    readonly missileCount: number;
+    readonly fireCooldown: number;
+    readonly invulnerabilityTimer: number;
 }
 
 export interface AsteroidSnapshot extends EntityBase {
-  readonly kind: "asteroid";
-  // без додаткових полів
+    readonly kind: "asteroid";
+    // без додаткових полів
 }
 ```
 
 **Exhaustiveness у `toSnapshot()`:**
+
 ```ts
 switch (this.kind) {
   case "ship":
@@ -1034,6 +1041,7 @@ export const bus = new Bus<GameEvents>();
 ```
 
 **Використання:**
+
 ```ts
 // Емітер (ship.ts)
 bus.emit("fired", { weapon: "missile" });  // OK
@@ -1054,25 +1062,26 @@ bus.on("invalid", (detail) => { ... });     // ERROR: "invalid" не в GameEven
 
 ## M3 Acceptance Status (Grouped Requirements Summary)
 
-| Requirement | Status |
-|-------------|--------|
-| Typed `Bus<GameEvents>` | ✅ |
-| Typed `Room extends EventEmitter<RoomEvents>` | ✅ |
-| Zod `ServerConfig` with env parsing | ✅ |
-| Unknown-safe catch handling | ✅ |
-| Strict TS config in all packages | ✅ |
-| Vite entry point `main.ts` | ✅ |
-| Root typecheck includes all packages | ✅ |
-| CI runs `npm ci` + `npm run typecheck` | ✅ |
-| Build/lint pass | ✅ |
-| Regression suite (308/308) | ⚠️ tests still target the legacy `.js` implementations |
-| `<5` type assertions | ❌ (52 regular + 1 double — see forensic audit) |
+| Requirement                                   | Status                                                 |
+| --------------------------------------------- | ------------------------------------------------------ |
+| Typed `Bus<GameEvents>`                       | ✅                                                     |
+| Typed `Room extends EventEmitter<RoomEvents>` | ✅                                                     |
+| Zod `ServerConfig` with env parsing           | ✅                                                     |
+| Unknown-safe catch handling                   | ✅                                                     |
+| Strict TS config in all packages              | ✅                                                     |
+| Vite entry point `main.ts`                    | ✅                                                     |
+| Root typecheck includes all packages          | ✅                                                     |
+| CI runs `npm ci` + `npm run typecheck`        | ✅                                                     |
+| Build/lint pass                               | ✅                                                     |
+| Regression suite (308/308)                    | ⚠️ tests still target the legacy `.js` implementations |
+| `<5` type assertions                          | ❌ (52 regular + 1 double — see forensic audit)        |
 
 > Таблиця згруповує декілька окремих критеріїв прийняття в один рядок. Оригінальний M3 мав більше деталізованих пунктів; ця таблиця — підсумок.
 
 > **Обмеження тестового прогону:** `npm test` виконує 308 тестів, але 15 наявних тестових файлів імпортують legacy `.js` реалізації (`client/src/**/*.js`, `server/src/**/*.js`, `shared/**/*.js`), а не TypeScript-джерела. Отже, цей прогін **не доводить**, що саме `.ts` реалізації проходять регресійний набір. Node 24 `--experimental-strip-types` виконує `.ts`, але не переписує `.js`-специфікатори імпорту на `.ts` (107 імпортів у TS-коді), а `shared` package exports вказує на `dist/`, який потребує попередньої збірки. Повний перехід тестів на TypeScript — окрема інфраструктурна задача.
 
 ---
+
 # Lab 07 — Двигуни, пам'ять та тестування: як працює V8 і як це довесть
 
 Лабораторна робота 07 додає до проєкту повноцінну систему тестування та CI, а також починає роботу над аналізом продуктивності движка V8.
@@ -1106,6 +1115,7 @@ bus.on("invalid", (detail) => { ... });     // ERROR: "invalid" не в GameEven
 ### fast-check property-based тести
 
 Використовуються у Vitest-тестах протоколу та кодексу:
+
 - Кодек round-trip у межах квантованості: `decode(encode(m)) ≈ m` для будь-якого коректного повідомлення
 - Довжина вихідного кодексу відповідає специфікації
 - Протиправильні буфери призводять до очікуваної помилки, а не до крашу
@@ -1170,6 +1180,7 @@ if (shipId === undefined || shipId === null) continue;
 ### Тестові виконання
 
 `npm test` — Vitest модульні та property-based тести — **всі 217 тестів проходять**, вихідний код 0.
+
 - Покриття коду `shared/` — **88.96%** statements (вимога Lab 07: ≥ 85%).
 
 ## CI-конвеєр (GitHub Actions)
@@ -1232,3 +1243,59 @@ npm run build
 - Обробку помилок EventEmitter та Promise.
 
 Проєкт демонструє практичне застосування механізмів асинхронного JavaScript, Node.js HTTP, WebSocket та Streams, а також принципів побудови мережевих застосунків.
+
+---
+
+# Lab 08 — Ship It: Production Readiness, Docker, CI/CD, Observability
+
+## Продакшен-готовий процес (M1)
+
+Сервер тепер відповідає вимогам production-середовища:
+
+- **Graceful shutdown** на `SIGTERM` / `SIGINT`: `server.close()`зупиняє приймання нових з'єднань, клієнтам надсилається повідомлення `{ type: "shutdown" }` та WebSocket закривається кодом `1001`, потім процесу виходить з кодом `0` за менше 10 с.
+- **`/health`** — liveness endpoint, повертає `{ status: "ok", version, timestamp }`.
+- **`/ready`** — readiness endpoint, повертає `{ ready: boolean, version, timestamp }`.
+- **`/metrics`** — JSON-метрики: підключені гравці, активні кімнати, повідомлень/с, байт/с, tick p99, event-loop lag p99, RSS, причини відхилень.
+- **Структуроване логування** через `pino` (JSON, `LOG_LEVEL` змінна середовища, `roomId`/`playerId` поля).
+- **Версійний стамп** (`GIT_SHA` ?? `BUILD_VERSION` ?? `"dev"`) у `/health` та HUD.
+- **Zod-валідована конфігурація**: `ALLOWED_ORIGINS`, `MAX_CONNECTIONS_PER_IP`, `MAX_ROOMS`, `MAX_PLAYERS_PER_ROOM`, `PORT`, `NODE_ENV`, `LOG_DIR`.
+- **Не роз合計 на невідоме**: `uncaughtException` та `unhandledRejection` логуються та виходять з ненульовим кодом.
+
+## Захист та обмеження (M2)
+
+- **Origin verification** через `verifyClient` — відхиляє WebSocket-підключення з недозволених походжень (еквівалент CORS для WebSocket).
+- **Per-IP connection cap** — ліміт одночасних підключень з однієї IP (`MAX_CONNECTIONS_PER_IP`, за замовчуванням 50).
+- Підтверджені ліміти Lab 4: розмір повідомлення (16 KiB), token bucket rate limiting, join timeout (5 с), slow-client policy (bufferedAmount > 1 MiB).
+
+## Контейнер та конвеєр (M3)
+
+- **Multi-stage Dockerfile** (`node:22-alpine`): stage 1 — збірка, stage 2 — запуск лише з production-залежностями.
+- **Non-root користувач** (`nodejs:1001`).
+- **Exec-form CMD** (`["node", "server/dist/index.js"]`) — `SIGTERM` дістається до Node безпосередньо.
+- **HEALTHCHECK** через Node `fetch` до `/health`.
+- **`.dockerignore`** виключає `node_modules`, `.git`, логи, збирання.
+- **`docker compose`** для локального запуску production-подібного контейнера.
+- **GitHub Actions**: CI на кожен push (`typecheck → lint → test → build → e2e`), а workflow `release.yml` на теги `v*` — збирання образу та пуш до GHCR.
+
+## Завершення та запуск (M4)
+
+- **PWA**: `manifest.webmanifest` і мінімальний service worker (`sw.js`) для встановлення як додатка.
+- **Uptime monitoring**: зовнішній чекер на `/health` кожну хвилину.
+- **Теги**: `lab-08` і `v1.0.0`.
+
+## Запуск у Docker
+
+```bash
+docker compose up --build
+```
+
+Сервер буде доступний на `http://localhost:3000`.
+
+## Змінні середовища
+
+Див. `.env.example` для списку усіх змінних середовища та їх значень за замовчуванням.
+
+## Обмеження
+
+- Один екземпляр сервера — кімната vivre в пам'яті одного процесу. Горизонтальне масштабування вимагає sticky sessions або Redis pub/sub.
+- Docker-демон недоступний у цьому середовищі для перевірки розміру образу (< 200 MB ціль).
