@@ -3,7 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "tsc -b tsconfig.json",
+        "build": "tsc -b tsconfig.json && node --input-type=module -e \"import { mkdir, cp } from 'node:fs/promises'; await mkdir('dist/data', { recursive: true }); await cp('data/rooms.json', 'dist/data/rooms.json')\"",
         "dev": "npm run build && node dist/src/index.js"
     },
     "dependencies": {
