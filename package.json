@@ -10,16 +10,27 @@
     ],
     "scripts": {
         "dev": "npm run dev --workspace=@dogfight/client",
-        "build": "npm run build --workspace=@dogfight/client",
+        "build": "npm run build --workspace=@dogfight/shared && npm run build --workspace=@dogfight/server && npm run build --workspace=@dogfight/client",
         "preview": "npm run preview --workspace=@dogfight/client",
         "test": "node --test",
         "lint": "eslint .",
+        "test": "vitest run",
+        "typecheck": "tsc --noEmit -p shared/tsconfig.json && tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p client/tsconfig.json",
         "format": "prettier --write .",
         "format:check": "prettier --check ."
     },
     "devDependencies": {
+        "@fast-check/vitest": "^0.5.0",
+        "@playwright/test": "^1.65.1",
+        "@types/node": "^26.6.6",
+        "@types/ws": "^8.18.2",
+        "@vitest/coverage-v8": "^5.1.1",
         "eslint": "^10.12.0",
+        "fast-check": "^4.11.0",
         "globals": "^17.13.0",
-        "prettier": "^3.9.9"
+        "playwright": "^1.65.1",
+        "prettier": "^3.9.9",
+        "typescript": "^7.0.2",
+        "vitest": "^5.1.1"
     }
 }

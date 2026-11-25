@@ -38,6 +38,13 @@ export class Entity {
         this.alive = true;
     }
 
+    setHp(value) {
+        this.#hp = Math.max(0, value);
+        if (this.#hp === 0) {
+            this.alive = false;
+        }
+    }
+
     update(dt) {
         this.pos = this.pos.add(this.vel.scale(dt));
 

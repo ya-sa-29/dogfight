@@ -6,7 +6,10 @@ export default defineConfig([
         files: ["**/*.js"],
         ignores: ["node_modules/**", "dist/**"],
         languageOptions: {
-            globals: globals.browser,
+            globals: {
+                ...globals.browser,
+                ...globals.node,
+            },
         },
         rules: {
             "no-unused-vars": "warn",

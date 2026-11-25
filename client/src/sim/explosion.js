@@ -1,5 +1,5 @@
 import { Entity } from "./entity.js";
-import { Vector2 } from "./Vector.js";
+import { Vector2 } from "./vector.js";
 
 export class Explosion extends Entity {
     constructor(pos, particleCount = 12) {
@@ -35,5 +35,19 @@ export class Explosion extends Entity {
         if (this.particles.every((particle) => particle.life <= 0)) {
             world.despawn(this.id);
         }
+    }
+
+    static fromSnapshot(data) {
+        const pos = new Vector2(data.x, data.y);
+        const explosion = new Explosion(pos, data.particles?.length ?? 12);
+        if (data.particles) {
+            explosion.particles = data.particles.map((p) => ({
+                pos: new Vector2(p.x, p.y),
+                vel: new Vector2(p.vx, p.vy),
+                life: p.life,
+                maxLife: p.maxLife,
+            }));
+        }
+        return explosion;
     }
 }

@@ -1,5 +1,5 @@
 import { Entity } from "./entity.js";
-import { Vector2 } from "./Vector.js";
+import { Vector2 } from "./vector.js";
 import { Bullet } from "./bullet.js";
 import { Missile } from "./missile.js";
 import { gameEvents } from "../events/gameEvents.js";

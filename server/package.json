@@ -3,9 +3,12 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "node src/index.js"
+        "build": "tsc -b tsconfig.json && node --input-type=module -e \"import { mkdir, cp } from 'node:fs/promises'; await mkdir('dist/data', { recursive: true }); await cp('data/rooms.json', 'dist/data/rooms.json')\"",
+        "dev": "npm run build && node dist/src/index.js"
     },
     "dependencies": {
+        "@dogfight/shared": "*",
+        "pino": "^10.4.0",
         "ws": "^8.18.0"
     }
 }

@@ -1,109 +1,84 @@
-
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { RoomManager } from "./roomManager.js";
-import { parseClientMessage } from "./protocol.js";
+import { roomManager } from "./roomManager.js";
+import { validateInputMessage } from "@dogfight/shared";
+import { getRooms } from "./rooms.js";
+import { createLatencyQueue, parseLatencyConfig } from "./latency-injector.js";
+import { createTokenBucket } from "./token-bucket.js";
+import {
+    encodeServerMessage,
+    decodeClientFrame,
+    normalizeCodec,
+    TRANSPORT_JSON,
+} from "./wire.js";
 
 const JOIN_TIMEOUT = 5000;
 const HEARTBEAT_INTERVAL = 15000;
 
-const RATE_LIMIT = 10;
-const RATE_BURST = 20;
+// Two independent buckets. Input traffic is the hot path (the client transmits
+// at 30 Hz), so it gets a higher refill rate than control traffic.
+const INPUT_RATE_LIMIT = 40;
+const INPUT_RATE_BURST = 20;
 
-const INPUT_RATE_LIMIT = 90;
-const INPUT_RATE_BURST = 120;
+const CONTROL_RATE_LIMIT = 10;
+const CONTROL_RATE_BURST = 20;
 
 const MAX_PLAYERS_PER_ROOM = 8;
 const MAX_ROOMS = 100;
 
 const MAX_BUFFERED_AMOUNT = 1024 * 1024;
 
-export const roomManager = new RoomManager();
-
-export function setupWebSocket(server, roomConfigs = []) {
-    roomManager.setRoomConfigs(roomConfigs);
-
+export function setupWebSocket(
+    server,
+    { loadRooms = getRooms, now = () => Date.now() } = {},
+) {
     const wss = new WebSocketServer({
         server,
         path: "/ws",
         maxPayload: 16 * 1024,
     });
 
-    wss.on("connection", (socket) => {
+    wss.on("connection", (socket, request) => {
         console.log("WebSocket client connected");
 
+        // Parse latency configuration from request URL
+        const requestUrl = request.url;
+        const latencyConfig = parseLatencyConfig(requestUrl);
+
+        // Create latency queues for this socket
+        const upstreamQueue = createLatencyQueue(
+            socket,
+            latencyConfig,
+            "upstream",
+        );
+        const downstreamQueue = createLatencyQueue(
+            socket,
+            latencyConfig,
+            "downstream",
+        );
+
         socket.player = null;
-        socket.room = null;
+        socket.match = null;
         socket.missedPongs = 0;
+        // M4: per-connection transport codec for data-plane messages
+        // (input/snapshot). Control-plane messages stay JSON. Negotiated from
+        // the join message; defaults to JSON.
+        socket.transportCodec = TRANSPORT_JSON;
 
         let joined = false;
 
-        let tokens = RATE_BURST;
-        let lastRefill = Date.now();
+        // Token Buckets (per connection, independent)
+        const inputBucket = createTokenBucket({
+            refillRate: INPUT_RATE_LIMIT,
+            burst: INPUT_RATE_BURST,
+            now,
+        });
 
-        let inputTokens = INPUT_RATE_BURST;
-        let lastInputRefill = Date.now();
-
-        function consumeToken(rate, burst, bucket) {
-            const now = Date.now();
-            const elapsed = (now - bucket.lastRefill) / 1000;
-
-            bucket.tokens = Math.min(
-                burst,
-                bucket.tokens + elapsed * rate,
-            );
-
-            bucket.lastRefill = now;
-
-            if (bucket.tokens < 1) {
-                return false;
-            }
-
-            bucket.tokens -= 1;
-            return true;
-        }
-
-        function consumeGeneralToken() {
-            const bucket = {
-                get tokens() {
-                    return tokens;
-                },
-                set tokens(value) {
-                    tokens = value;
-                },
-                get lastRefill() {
-                    return lastRefill;
-                },
-                set lastRefill(value) {
-                    lastRefill = value;
-                },
-            };
-
-            return consumeToken(RATE_LIMIT, RATE_BURST, bucket);
-        }
-
-        function consumeInputToken() {
-            const bucket = {
-                get tokens() {
-                    return inputTokens;
-                },
-                set tokens(value) {
-                    inputTokens = value;
-                },
-                get lastRefill() {
-                    return lastInputRefill;
-                },
-                set lastRefill(value) {
-                    lastInputRefill = value;
-                },
-            };
-
-            return consumeToken(
-                INPUT_RATE_LIMIT,
-                INPUT_RATE_BURST,
-                bucket,
-            );
-        }
+        const controlBucket = createTokenBucket({
+            refillRate: CONTROL_RATE_LIMIT,
+            burst: CONTROL_RATE_BURST,
+            now,
+        });
 
         const joinTimeout = setTimeout(() => {
             if (!joined) {
@@ -116,121 +91,226 @@ export function setupWebSocket(server, roomConfigs = []) {
             socket.missedPongs = 0;
         });
 
-        socket.on("message", (data) => {
+        function handleMessage(s, rawData, isBinary) {
             let message;
 
             try {
-                message = parseClientMessage(data);
+                // M4: binary frames carry an input (binary codec); text frames
+                // are JSON control-plane messages (or JSON-mode inputs).
+                message = decodeClientFrame(rawData, isBinary);
             } catch (error) {
+                // Malformed and unknown messages still consume a control token
+                // so a client cannot bypass rate limiting by sending garbage.
+                if (!controlBucket.consume()) {
+                    console.log("Rate limit exceeded");
+                    s.close(1008, "Rate limit exceeded");
+                    return;
+                }
+
                 console.error("Invalid WebSocket message:", error);
-                socket.close(error.closeCode || 1008, error.message);
+                s.close(error.closeCode || 1008, error.message);
                 return;
             }
 
-            const allowed =
-                message.type === "input"
-                    ? consumeInputToken()
-                    : consumeGeneralToken();
+            // Select the bucket by message category: input traffic is the hot
+            // path and must not be throttled by control traffic (or vice versa).
+            const bucket =
+                message.type === "input" ? inputBucket : controlBucket;
 
-            if (!allowed) {
-                console.log("Rate limit exceeded:", message.type);
-                socket.close(1008, "Rate limit exceeded");
+            if (!bucket.consume()) {
+                console.log("Rate limit exceeded");
+                s.close(1008, "Rate limit exceeded");
                 return;
             }
 
             if (message.type === "join") {
                 if (joined) {
-                    socket.close(1008, "Already joined");
+                    s.close(1008, "Already joined");
                     return;
                 }
 
-                let room = roomManager.getRoom(message.roomId);
+                // Get room config from rooms.json
+                let roomConfig = null;
+                loadRooms()
+                    .then((rooms) => {
+                        const room = rooms.find((r) => r.id === message.roomId);
+                        if (room) {
+                            roomConfig = room;
+                        }
+                        handleJoin(roomConfig);
+                    })
+                    .catch((err) => {
+                        console.error("Failed to get rooms:", err);
+                        s.close(1008, "Server error");
+                    });
 
-                if (!room && roomManager.rooms.size >= MAX_ROOMS) {
-                    socket.close(1008, "Server room limit reached");
-                    return;
+                function handleJoin(roomConfig) {
+                    if (!roomConfig) {
+                        s.close(1008, "Room not found");
+                        return;
+                    }
+
+                    // The peer may have disconnected while rooms were loading.
+                    // Registering a player for a closed socket would leak a
+                    // permanent ghost player and consume room capacity.
+                    if (s.readyState !== WebSocket.OPEN) {
+                        return;
+                    }
+
+                    let match = roomManager.getMatch(message.roomId);
+
+                    // Maximum rooms per server
+                    if (!match && roomManager.matches.size >= MAX_ROOMS) {
+                        s.close(1008, "Server room limit reached");
+                        return;
+                    }
+
+                    // Create match if necessary
+                    if (!match) {
+                        match = roomManager.createMatch(
+                            message.roomId,
+                            roomConfig,
+                            {
+                                sendFn: (targetSocket, msg) =>
+                                    downstreamQueue.enqueue(msg, sendMessage),
+                            },
+                        );
+                    }
+
+                    if (!match) {
+                        s.close(1008, "Could not create match");
+                        return;
+                    }
+
+                    // Maximum players per room
+                    if (match.players.size >= MAX_PLAYERS_PER_ROOM) {
+                        s.close(1008, "Room is full");
+                        return;
+                    }
+
+                    s.player = {
+                        id: randomUUID(),
+                        name: message.playerName,
+                        socket: s,
+                    };
+
+                    // M4: negotiate this connection's data-plane codec. Must be
+                    // set before the first snapshot can be sent to this socket.
+                    s.transportCodec = normalizeCodec(message.codec);
+
+                    const added = match.addPlayer(s.player);
+
+                    if (!added) {
+                        s.close(1008, "Could not join match");
+                        return;
+                    }
+
+                    s.match = match;
+                    joined = true;
+
+                    // Start the tick loop once the first player is registered.
+                    // Match.start() is idempotent, and subsequent players must
+                    // not create another loop.
+                    if (match.players.size === 1) {
+                        match.start();
+                    }
+
+                    clearTimeout(joinTimeout);
+
+                    console.log(
+                        `Player ${s.player.name} joined match ${match.id}`,
+                    );
+
+                    sendMessage(s, {
+                        type: "joined",
+                        playerId: s.player.id,
+                        roomId: match.id,
+                        seed: match.getSeed(),
+                        roomConfig: match.getRoomConfig(),
+                        shipId: match.ships.get(s.player.id),
+                        // M4: echo the negotiated transport codec so the client
+                        // can verify its request was honoured.
+                        codec: s.transportCodec,
+                    });
+
+                    broadcastRoster(match);
                 }
-
-                if (!room) {
-                    room = roomManager.createRoom(message.roomId);
-                }
-
-                if (!room) {
-                    socket.close(1008, "Unknown room");
-                    return;
-                }
-
-                if (room.players.size >= MAX_PLAYERS_PER_ROOM) {
-                    socket.close(1008, "Room is full");
-                    return;
-                }
-
-                socket.player = {
-                    id: randomUUID(),
-                    name: message.playerName,
-                    socket,
-                };
-
-                const added = room.join(socket.player);
-
-                if (!added) {
-                    socket.close(1008, "Could not join room");
-                    return;
-                }
-
-                socket.room = room;
-                joined = true;
-
-                clearTimeout(joinTimeout);
-
-                console.log(
-                    `Player ${socket.player.name} joined room ${room.id}`,
-                );
-
-                sendMessage(socket, {
-                    type: "joined",
-                    playerId: socket.player.id,
-                    roomId: room.id,
-                });
-
-                broadcastRoster(room);
                 return;
             }
 
             if (!joined) {
-                socket.close(1008, "Join required");
+                s.close(1008, "Join required");
+                return;
+            }
+
+            if (message.type === "input") {
+                // Validate input message
+                let validatedInput;
+                try {
+                    validatedInput = validateInputMessage(message);
+                } catch (error) {
+                    console.error("Invalid input message:", error);
+                    s.close(error.closeCode || 1008, error.message);
+                    return;
+                }
+
+                // Forward to match
+                if (s.match) {
+                    s.match.handleInput(s.player.id, validatedInput);
+                }
                 return;
             }
 
             if (message.type === "chat") {
-                const chatMessage = socket.room.chat(
-                    socket.player.id,
-                    message.message,
-                );
+                if (s.match) {
+                    const chatMessage = s.match.handleChat(
+                        s.player.id,
+                        message.message,
+                    );
 
-                if (chatMessage) {
-                    broadcast(socket.room, {
-                        type: "chat",
-                        ...chatMessage,
-                    });
+                    if (chatMessage) {
+                        broadcast(s.match, {
+                            type: "chat",
+                            ...chatMessage,
+                        });
+                    }
                 }
+                return;
             }
 
-            if (message.type === "input") {
-                socket.room.match.setInput(socket.player.id, message);
+            if (message.type === "leave") {
+                console.log(`Player ${s.player.name} left`);
+                s.close(1000, "Player left");
             }
 
             if (message.type === "ping") {
-                sendMessage(socket, {
-                    type: "pong",
-                    timestamp: message.timestamp,
-                });
+                // Respond to ping with pong, echoing the timestamp and seq
+                // This is for client-side RTT measurement. Route pong through
+                // the downstream queue so it experiences the same downstream
+                // latency as snapshots (otherwise RTT only reflects upstream).
+                downstreamQueue.enqueue(
+                    {
+                        type: "pong",
+                        timestamp: message.timestamp,
+                        seq: message.seq,
+                    },
+                    sendMessage,
+                );
+                return;
             }
-            
-            if (message.type === "leave") {
-                console.log(`Player ${socket.player.name} left`);
-                socket.close(1000, "Player left");
-            }
+        }
+
+        socket.on("message", (data, isBinary) => {
+            // M4: capture isBinary so the decode path (binary vs JSON) and the
+            // latency-injector type hint survive queueing. A binary upstream
+            // frame is always an input, so it is classified as "input" and
+            // remains in the never-drop set even though the injector cannot
+            // JSON-sniff a binary payload.
+            upstreamQueue.enqueue(
+                data,
+                (s, rawData) => handleMessage(s, rawData, isBinary),
+                isBinary ? "input" : undefined,
+            );
         });
 
         socket.on("close", () => {
@@ -238,9 +318,12 @@ export function setupWebSocket(server, roomConfigs = []) {
 
             clearTimeout(joinTimeout);
 
-            if (joined && socket.room && socket.player) {
-                socket.room.leave(socket.player.id);
-                broadcastRoster(socket.room);
+            upstreamQueue.cleanup();
+            downstreamQueue.cleanup();
+
+            if (joined && socket.match && socket.player) {
+                socket.match.removePlayer(socket.player.id);
+                broadcastRoster(socket.match);
             }
         });
 
@@ -269,11 +352,6 @@ export function setupWebSocket(server, roomConfigs = []) {
 
     wss.on("close", () => {
         clearInterval(heartbeat);
-
-        for (const room of roomManager.rooms.values()) {
-            room.match.stop();
-            room.matchLog.close();
-        }
     });
 
     return wss;
@@ -290,7 +368,11 @@ function sendMessage(socket, message) {
         return false;
     }
 
-    socket.send(JSON.stringify(message), (error) => {
+    // M4: encode the message for this recipient's negotiated transport codec.
+    // Only `snapshot` is binary-encoded; all other message types stay JSON.
+    const payload = encodeServerMessage(message, socket.transportCodec);
+
+    socket.send(payload, (error) => {
         if (error) {
             console.error("WebSocket send error:", error);
         }
@@ -299,20 +381,20 @@ function sendMessage(socket, message) {
     return true;
 }
 
-function broadcastRoster(room) {
+function broadcastRoster(match) {
     const roster = {
         type: "roster",
-        players: Array.from(room.players.values()).map((player) => ({
+        players: Array.from(match.players.values()).map((player) => ({
             id: player.id,
             name: player.name,
         })),
     };
 
-    broadcast(room, roster);
+    broadcast(match, roster);
 }
 
-function broadcast(room, message) {
-    for (const player of room.players.values()) {
+function broadcast(match, message) {
+    for (const player of match.players.values()) {
         sendMessage(player.socket, message);
     }
 }

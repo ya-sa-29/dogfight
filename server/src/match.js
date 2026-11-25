@@ -1,93 +1,76 @@
-
-import { performance } from "node:perf_hooks";
+import { EventEmitter } from "node:events";
+import { createMatchLog } from "./matchlog.js";
 import {
     World,
     Ship,
-    Asteroid,
-    Pickup,
-    Vector2,
+    initializeWorld,
+    createRNG,
     wrapShip,
 } from "@dogfight/shared";
-import { mulberry32 } from "@dogfight/shared/sim/random.js";
 
 const TICK_RATE = 30;
 const TICK_INTERVAL = 1000 / TICK_RATE;
-const MAX_BUFFERED_AMOUNT = 1024 * 1024;
-const MAX_PENDING_INPUTS = 120;
 
-export class Match {
-    constructor(room) {
-        this.room = room;
+export class Match extends EventEmitter {
+    constructor(id, roomConfig, { sendFn } = {}) {
+        super();
+
+        this.id = id;
+        this.roomConfig = roomConfig;
+        this.players = new Map(); // playerId -> { id, name, socket, shipId, inputSeq: 0, lastProcessedSeq: -1, pendingInputs: [] }
+        this.matchLog = createMatchLog(id);
+
+        // Generate authoritative seed for this match
+        this.seed = createRNG(Date.now() + Math.random() * 1000000).randomInt(
+            1,
+            2147483647,
+        );
+
+        // Create authoritative world
         this.world = new World();
-        this.players = new Map();
+        this.world.score = 0;
 
-        // Останній застосований стан керування кожного гравця.
-        this.inputs = new Map();
+        // Spawn ship for each player (will be done when players join)
+        this.ships = new Map(); // playerId -> shipId
 
+        // Server tick state
         this.tick = 0;
         this.running = false;
-        this.timer = null;
+        this.nextTickTarget = 0;
 
-        this.width = Number(room.config?.width) || 1600;
-        this.height = Number(room.config?.height) || 900;
+        // Stats
+        this.tickDurations = [];
+        this.maxTickDurations = 100;
 
-        this.random = mulberry32(this.createSeed());
+        // Scheduling jitter (actual tick start minus scheduled target), kept
+        // signed for diagnostics and aggregated as absolute values. Uses the
+        // same bounded window as tick durations so the two statistics stay
+        // consistent.
+        this.tickJitters = [];
 
-        this.firstTickAt = null;
-        this.lastTickAt = null;
-        this.lastTickInterval = null;
+        // Send function for downstream latency injection
+        this.sendFn =
+            sendFn ||
+            ((socket, message) => {
+                if (socket.readyState !== 1) return;
+                try {
+                    socket.send(JSON.stringify(message));
+                } catch (error) {
+                    console.error("Match send error:", error);
+                }
+            });
 
-        this.totalTickDuration = 0;
-        this.lastTickDuration = 0;
-        this.maxTickDuration = 0;
-
-        this.totalJitter = 0;
-        this.maxJitter = 0;
-        this.jitterSamples = 0;
-
-        this.initializeWorld();
+        this.on("event", (event) => {
+            this.matchLog.write(event);
+        });
     }
 
-    createSeed() {
-        return Math.floor(Math.random() * 0xFFFFFFFF);
+    getSeed() {
+        return this.seed;
     }
 
-    initializeWorld() {
-        const configuredCount = Number(this.room.config?.asteroidCount);
-
-        const asteroidCount =
-            Number.isInteger(configuredCount) && configuredCount >= 0
-                ? configuredCount
-                : 8;
-
-        for (let i = 0; i < asteroidCount; i++) {
-            const position = new Vector2(
-                80 + this.random() * (this.width - 160),
-                80 + this.random() * (this.height - 160),
-            );
-
-            const velocity = new Vector2(
-                (this.random() - 0.5) * 80,
-                (this.random() - 0.5) * 80,
-            );
-
-            this.world.spawn(
-                new Asteroid(
-                    position,
-                    velocity,
-                    18 + this.random() * 17,
-                ),
-            );
-        }
-
-        this.world.spawn(
-            new Pickup(
-                new Vector2(
-                    this.width * 0.7,
-                    this.height * 0.3,
-                ),
-            ),
-        );
+    getRoomConfig() {
+        return this.roomConfig;
     }
 
     addPlayer(player) {
@@ -95,339 +78,322 @@ export class Match {
             return false;
         }
 
+        // Spawn ship for this player
+        const roomWidth = this.roomConfig.width;
+        const roomHeight = this.roomConfig.height;
         const ship = this.world.spawn(
-            new Ship(this.width / 2, this.height / 2),
+            new Ship(roomWidth / 2, roomHeight / 2, player.id),
         );
+        this.ships.set(player.id, ship.id);
 
         this.players.set(player.id, {
-            player,
-            ship,
-            lastReceivedSeq: 0,
-            lastProcessedSeq: 0,
+            ...player,
+            shipId: ship.id,
+            inputSeq: 0,
+            lastProcessedSeq: -1,
             pendingInputs: [],
-            seenShotIds: new Set(),
         });
 
-        this.inputs.set(player.id, {
-            thrust: false,
-            turn: 0,
-            seq: 0,
+        this.emit("join", player);
+        this.emit("event", {
+            type: "join",
+            playerId: player.id,
+            playerName: player.name,
         });
 
-        if (!this.running) {
-            this.start();
+        // If this is the first player, initialize the world with seed
+        if (this.players.size === 1) {
+            this.initializeWorld();
         }
 
         return true;
     }
 
-    removePlayer(playerId) {
-        const state = this.players.get(playerId);
+    initializeWorld() {
+        // Initialize asteroids and pickup using authoritative seed
+        const ship = this.world.get(this.ships.values().next().value);
+        initializeWorld(
+            this.world,
+            this.seed,
+            this.roomConfig.width,
+            this.roomConfig.height,
+            this.roomConfig.asteroidCount,
+            ship,
+        );
+    }
 
-        if (!state) {
+    removePlayer(playerId) {
+        const player = this.players.get(playerId);
+
+        if (!player) {
             return false;
         }
 
-        this.world.despawn(state.ship.id);
+        // Despawn ship
+        const shipId = this.ships.get(playerId);
+        if (shipId) {
+            this.world.despawn(shipId);
+            this.ships.delete(playerId);
+        }
+
         this.players.delete(playerId);
-        this.inputs.delete(playerId);
+
+        this.emit("leave", player);
+        this.emit("event", {
+            type: "leave",
+            playerId: player.id,
+            playerName: player.name,
+        });
 
         if (this.players.size === 0) {
+            this.emit("empty");
+            this.matchLog.close();
             this.stop();
         }
 
         return true;
     }
 
-    setInput(playerId, input) {
-        const state = this.players.get(playerId);
-
-        if (!state || input.seq <= state.lastReceivedSeq) {
+    handleInput(playerId, input) {
+        const player = this.players.get(playerId);
+        if (!player) {
             return false;
         }
 
-        if (
-            input.fire &&
-            (
-                typeof input.clientShotId !== "string" ||
-                !input.clientShotId.trim() ||
-                state.seenShotIds.has(input.clientShotId)
-            )
-        ) {
+        // Validate sequence - must be next expected
+        if (input.seq !== player.inputSeq) {
+            console.warn(
+                `Player ${playerId} sent input seq ${input.seq}, expected ${player.inputSeq}`,
+            );
             return false;
         }
 
-        if (state.pendingInputs.length >= MAX_PENDING_INPUTS) {
-            state.player.socket?.close?.(1013, "Input queue full");
-            return false;
-        }
-
-        state.pendingInputs.push({
-            thrust: input.thrust,
-            turn: input.turn,
-            fire: input.fire,
-            clientShotId: input.fire ? input.clientShotId : undefined,
-            seq: input.seq,
-        });
-
-        if (input.fire) {
-            state.seenShotIds.add(input.clientShotId);
-        }
-
-        state.lastReceivedSeq = input.seq;
+        // Store input for this tick
+        player.pendingInputs.push(input);
+        player.inputSeq++;
 
         return true;
     }
 
-    createSnapshot(playerId) {
-        const playerState = this.players.get(playerId);
-
-        if (!playerState) {
-            return null;
-        }
-
-        const playerIdsByShipId = new Map();
-
-        for (const [id, state] of this.players) {
-            playerIdsByShipId.set(state.ship.id, id);
-        }
-
-        const entities = [];
-
-        for (const entity of this.world) {
-            if (!entity.alive) {
-                continue;
-            }
-
-            const snapshotEntity = {
-                id: entity.id,
-                kind: entity.kind,
-                pos: {
-                    x: entity.pos.x,
-                    y: entity.pos.y,
-                },
-                vel: {
-                    x: entity.vel.x,
-                    y: entity.vel.y,
-                },
-                angle: entity.angle,
-                radius: entity.radius,
-                hp: entity.hp,
-            };
-
-            if (entity.kind === "ship") {
-                snapshotEntity.playerId =
-                    playerIdsByShipId.get(entity.id);
-
-                snapshotEntity.thrust = entity.thrust;
-                snapshotEntity.weapon = entity.weapon;
-                snapshotEntity.missileCount = entity.missileCount;
-            }
-
-            if (entity.kind === "bullet") {
-                snapshotEntity.playerId = entity.playerId;
-                snapshotEntity.clientShotId = entity.clientShotId;
-            }
-
-            entities.push(snapshotEntity);
-        }
-
-        return {
-            type: "snapshot",
-            tick: this.tick,
-            entities,
-            events: this.world.events.map((event) => ({
-                ...event,
-            })),
-            lastProcessedSeq: playerState.lastProcessedSeq,
-        };
-    }
-
-    broadcastSnapshot() {
-        for (const [playerId, state] of this.players) {
-            const socket = state.player.socket;
-
-            if (!socket || socket.readyState !== 1) {
-                continue;
-            }
-
-            if (socket.bufferedAmount > MAX_BUFFERED_AMOUNT) {
-                socket.close(1013, "Client too slow");
-                continue;
-            }
-
-            const snapshot = this.createSnapshot(playerId);
-
-            if (!snapshot) {
-                continue;
-            }
-
-            socket.send(JSON.stringify(snapshot), (error) => {
-                if (error) {
-                    console.error("Snapshot send error:", error);
-                }
-            });
-        }
-    }
-
     start() {
-        if (this.running) {
-            return;
-        }
-
+        if (this.running) return;
         this.running = true;
-        this.nextTickAt = performance.now() + TICK_INTERVAL;
-
-        this.scheduleTick();
-    }
-
-    scheduleTick() {
-        if (!this.running) {
-            return;
-        }
-
-        const delay = Math.max(
-            0,
-            this.nextTickAt - performance.now(),
-        );
-
-        this.timer = setTimeout(() => this.runTick(), delay);
-    }
-
-    runTick() {
-        if (!this.running) {
-            return;
-        }
-
-        const tickStart = performance.now();
-
-        if (this.lastTickAt !== null) {
-            this.lastTickInterval = tickStart - this.lastTickAt;
-
-            const jitter = Math.abs(
-                this.lastTickInterval - TICK_INTERVAL,
-            );
-
-            this.totalJitter += jitter;
-            this.jitterSamples++;
-
-            this.maxJitter = Math.max(this.maxJitter, jitter);
-        } else {
-            this.firstTickAt = tickStart;
-        }
-
-        this.lastTickAt = tickStart;
-
-        const worldInputs = new Map();
-
-        for (const [playerId, state] of this.players) {
-            // Обробляємо не більше одного input за серверний тик.
-            const nextInput = state.pendingInputs.shift();
-
-            if (nextInput) {
-                this.inputs.set(playerId, {
-                    thrust: nextInput.thrust,
-                    turn: nextInput.turn,
-                    seq: nextInput.seq,
-                });
-
-                state.lastProcessedSeq = nextInput.seq;
-            }
-
-            // Рух зберігається між тиками, а постріл є одноразовою подією.
-            const currentInput = this.inputs.get(playerId);
-
-            worldInputs.set(state.ship.id, {
-                thrust: currentInput.thrust,
-                turn: currentInput.turn,
-                fire: Boolean(nextInput?.fire),
-                playerId,
-                clientShotId: nextInput?.clientShotId,
-            });
-        }
-
-        this.world.step(1 / TICK_RATE, worldInputs);
-
-        for (const state of this.players.values()) {
-            if (state.ship.alive) {
-                wrapShip(state.ship, this.width, this.height);
-            }
-        }
-
-        this.tick++;
-
-        this.lastTickDuration = performance.now() - tickStart;
-        this.totalTickDuration += this.lastTickDuration;
-
-        this.maxTickDuration = Math.max(
-            this.maxTickDuration,
-            this.lastTickDuration,
-        );
-
-        this.broadcastSnapshot();
-
-        this.nextTickAt += TICK_INTERVAL;
-
-        if (
-            this.nextTickAt <
-            performance.now() - TICK_INTERVAL
-        ) {
-            this.nextTickAt = performance.now() + TICK_INTERVAL;
-        }
-
-        this.scheduleTick();
-    }
-
-    getStats() {
-        const elapsed =
-            this.firstTickAt !== null && this.lastTickAt !== null
-                ? this.lastTickAt - this.firstTickAt
-                : 0;
-
-        const tickRate =
-            elapsed > 0
-                ? ((this.tick - 1) * 1000) / elapsed
-                : 0;
-
-        return {
-            roomId: this.room.id,
-            running: this.running,
-            players: this.players.size,
-            tick: this.tick,
-            targetTickRate: TICK_RATE,
-            actualTickRate: Number(tickRate.toFixed(2)),
-            lastTickIntervalMs:
-                this.lastTickInterval === null
-                    ? null
-                    : Number(this.lastTickInterval.toFixed(2)),
-            lastTickDurationMs: Number(
-                this.lastTickDuration.toFixed(3),
-            ),
-            averageTickDurationMs:
-                this.tick > 0
-                    ? Number(
-                          (this.totalTickDuration / this.tick).toFixed(3),
-                      )
-                    : 0,
-            maxTickDurationMs: Number(
-                this.maxTickDuration.toFixed(3),
-            ),
-            averageJitterMs:
-                this.jitterSamples > 0
-                    ? Number(
-                          (this.totalJitter / this.jitterSamples).toFixed(3),
-                      )
-                    : 0,
-            maxJitterMs: Number(this.maxJitter.toFixed(3)),
-        };
+        this.nextTickTarget = performance.now() + TICK_INTERVAL;
+        this.scheduleNextTick();
     }
 
     stop() {
         this.running = false;
+    }
 
-        if (this.timer !== null) {
-            clearTimeout(this.timer);
-            this.timer = null;
+    scheduleNextTick() {
+        if (!this.running) return;
+
+        const now = performance.now();
+        const delay = Math.max(0, this.nextTickTarget - now);
+
+        setTimeout(() => {
+            this.tickLoop();
+        }, delay);
+    }
+
+    tickLoop() {
+        if (!this.running) return;
+
+        const tickStart = performance.now();
+
+        // Scheduling jitter: how far the callback actually fired from its
+        // absolute target. Signed (negative = early, positive = late) so
+        // diagnostics can show drift direction. Measured against the scheduled
+        // target, NOT against World.step duration.
+        const tickJitter = tickStart - this.nextTickTarget;
+        this.tickJitters.push(tickJitter);
+        if (this.tickJitters.length > this.maxTickDurations) {
+            this.tickJitters.shift();
         }
+
+        // Step simulation
+        const dt = 1 / TICK_RATE;
+        const inputs = this.getInputsForStep();
+        this.world.step(dt, inputs);
+
+        // Wrap ships
+        // eslint-disable-next-line no-unused-vars
+        for (const [_playerId, shipId] of this.ships) {
+            const ship = this.world.get(shipId);
+            if (ship && ship.alive) {
+                wrapShip(ship, this.roomConfig.width, this.roomConfig.height);
+            }
+        }
+
+        // Broadcast snapshot
+        this.broadcastSnapshot();
+
+        // Record tick duration
+        const tickDuration = performance.now() - tickStart;
+        this.tickDurations.push(tickDuration);
+        if (this.tickDurations.length > this.maxTickDurations) {
+            this.tickDurations.shift();
+        }
+
+        // Schedule next tick
+        this.tick++;
+        this.nextTickTarget += TICK_INTERVAL;
+        this.scheduleNextTick();
+    }
+
+    getInputsForStep() {
+        // Build per-ship inputs Map for world.step
+        // Returns Map<shipId, Input> for per-entity input handling
+        const inputsMap = new Map();
+
+        for (const [playerId, player] of this.players) {
+            const shipId = this.ships.get(playerId);
+            if (!shipId) continue;
+
+            // For each ship, combine all pending inputs into one input for this tick
+            // Continuous actions (thrust, turnLeft, turnRight): use latest state
+            // One-shot actions (fire, switchWeapon): OR across all pending inputs
+            if (player.pendingInputs.length > 0) {
+                let combinedInput = {
+                    thrust: false,
+                    turnLeft: false,
+                    turnRight: false,
+                    fire: false,
+                    switchWeapon: false,
+                };
+
+                for (const pendingInput of player.pendingInputs) {
+                    // Continuous actions: use latest (last) input's state
+                    // One-shot actions: accumulate (OR)
+                    combinedInput.thrust = pendingInput.thrust;
+                    combinedInput.turnLeft = pendingInput.turnLeft;
+                    combinedInput.turnRight = pendingInput.turnRight;
+                    combinedInput.fire =
+                        combinedInput.fire || pendingInput.fire;
+                    combinedInput.switchWeapon =
+                        combinedInput.switchWeapon || pendingInput.switchWeapon;
+                }
+
+                inputsMap.set(shipId, combinedInput);
+
+                // Acknowledge all processed inputs
+                const latestInput =
+                    player.pendingInputs[player.pendingInputs.length - 1];
+                player.lastProcessedSeq = latestInput.seq;
+                player.pendingInputs = [];
+            } else {
+                // No input this tick - send empty input to maintain state
+                inputsMap.set(shipId, {
+                    thrust: false,
+                    turnLeft: false,
+                    turnRight: false,
+                    fire: false,
+                    switchWeapon: false,
+                });
+            }
+        }
+
+        return inputsMap;
+    }
+
+    broadcastSnapshot() {
+        const entitiesSnapshot = this.world.getEntitiesSnapshot();
+
+        // Build snapshot with per-player lastProcessedSeq
+        const playerAcks = {};
+        for (const [playerId, player] of this.players) {
+            playerAcks[playerId] = player.lastProcessedSeq;
+        }
+
+        const snapshot = {
+            type: "snapshot",
+            tick: this.tick,
+            serverTime: performance.now(), // Server timestamp for snapshot age calculation
+            seed: this.seed,
+            entities: entitiesSnapshot,
+            playerAcks,
+        };
+
+        // Broadcast to all players
+        for (const player of this.players.values()) {
+            this.sendToPlayer(player.socket, snapshot);
+        }
+
+        // Also emit for match logging
+        this.emit("event", {
+            type: "snapshot",
+            tick: this.tick,
+            entityCount: entitiesSnapshot.length,
+        });
+    }
+
+    sendToPlayer(socket, message) {
+        if (socket.readyState !== 1) return; // WebSocket.OPEN = 1
+
+        try {
+            this.sendFn(socket, message);
+        } catch (error) {
+            console.error("Match send error:", error);
+        }
+    }
+
+    getStats() {
+        const avgTickDuration =
+            this.tickDurations.length > 0
+                ? this.tickDurations.reduce((a, b) => a + b, 0) /
+                  this.tickDurations.length
+                : 0;
+
+        const maxTickDuration =
+            this.tickDurations.length > 0 ? Math.max(...this.tickDurations) : 0;
+
+        // Aggregate jitter as absolute values (sign is preserved in the
+        // per-tick samples for diagnostics, but the headline numbers are
+        // magnitudes). Returns 0 before the first tick.
+        const avgAbsTickJitter =
+            this.tickJitters.length > 0
+                ? this.tickJitters.reduce((sum, j) => sum + Math.abs(j), 0) /
+                  this.tickJitters.length
+                : 0;
+
+        const maxAbsTickJitter =
+            this.tickJitters.length > 0
+                ? this.tickJitters.reduce(
+                      (max, j) => Math.max(max, Math.abs(j)),
+                      0,
+                  )
+                : 0;
+
+        return {
+            tick: this.tick,
+            tickRate: TICK_RATE,
+            avgTickDurationMs: avgTickDuration,
+            maxTickDurationMs: maxTickDuration,
+            avgTickJitterMs: avgAbsTickJitter,
+            maxTickJitterMs: maxAbsTickJitter,
+            playerCount: this.players.size,
+            entityCount: this.world.getEntitiesSnapshot().length,
+        };
+    }
+
+    handleChat(playerId, message) {
+        const player = this.players.get(playerId);
+        if (!player) return false;
+
+        const chatMessage = {
+            playerId: player.id,
+            playerName: player.name,
+            message,
+            timestamp: new Date().toISOString(),
+        };
+
+        this.emit("chat", chatMessage);
+        this.emit("event", {
+            type: "chat",
+            ...chatMessage,
+        });
+
+        return chatMessage;
     }
 }

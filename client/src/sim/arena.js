@@ -1,4 +1,4 @@
-import { Vector2 } from "./Vector.js";
+import { Vector2 } from "./vector.js";
 
 export function wrapShip(ship, width, height) {
     ship.pos = new Vector2(
