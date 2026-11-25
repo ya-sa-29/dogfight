@@ -1,6 +1,6 @@
-﻿import { Vector2 } from "./vector";
-import { EntityId, Tick, Seq, Radians, asEntityId } from "./branded";
-import { World } from "./world";
+﻿import { Vector2 } from "./vector.js";
+import { EntityId, Tick, Seq, Radians, asEntityId } from "./branded.js";
+import { World } from "./world.js";
 
 /**
  * Base entity properties shared by all entity kinds.
@@ -330,7 +330,7 @@ case "asteroid":
 }
 
 // Re-export branded types for convenience
-export type { EntityId, Tick, Seq, Radians } from "./branded";
-export { asEntityId, asTick, asSeq, asRadians, isEntityId, isTick, isSeq } from "./branded";
+export type { EntityId, Tick, Seq, Radians } from "./branded.js";
 
+export { asEntityId, asTick, asSeq, asRadians, isEntityId, isTick, isSeq } from "./branded.js";
 

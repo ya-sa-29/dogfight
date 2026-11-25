@@ -1,5 +1,5 @@
-﻿import { Vector2 } from "./vector";
-import { Entity } from "./entity";
+﻿import { Vector2 } from "./vector.js";
+import { Entity } from "./entity.js";
 
 /**
  * Input shape for the integrate function (matches Ship input).

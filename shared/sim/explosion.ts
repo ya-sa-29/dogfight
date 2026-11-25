@@ -1,8 +1,8 @@
-﻿import { Entity, EntityBase, EntityId, EntitySnapshot, EntityInput, ExplosionSnapshot } from "./entity";
-import { Vector2 } from "./vector";
-import { SeededRNG } from "../rng/mulberry32";
-import { World } from "./world";
-import { asEntityId } from "./branded";
+﻿import { Entity, EntityBase, EntityId, EntitySnapshot, EntityInput, ExplosionSnapshot } from "./entity.js";
+import { Vector2 } from "./vector.js";
+import { SeededRNG } from "../rng/mulberry32.js";
+import { World } from "./world.js";
+import { asEntityId } from "./branded.js";
 
 /**
  * Explosion particle data structure.

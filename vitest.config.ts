@@ -35,9 +35,10 @@ export default defineConfig({
         },
     },
     resolve: {
-        alias: {
-            "@dogfight/shared": sharedSrc,
-        },
+        alias: [
+            { find: /^(\.\/.*?)\.js$/, replacement: "$1" },
+            { find: "@dogfight/shared", replacement: sharedSrc },
+        ],
         extensions: [".ts", ".mjs", ".js", ".json"],
     },
 });

@@ -1,6 +1,6 @@
-﻿import { Entity, EntityId, EntitySnapshot } from "./entity";
-import { Vector2 } from "./vector";
-import { asEntityId } from "./branded";
+﻿import { Entity, EntityId, EntitySnapshot } from "./entity.js";
+import { Vector2 } from "./vector.js";
+import { asEntityId } from "./branded.js";
 
 /**
  * Asteroid entity - destructible obstacle that can be shot for points.

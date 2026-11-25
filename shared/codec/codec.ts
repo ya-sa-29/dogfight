@@ -5,9 +5,9 @@
  * transport layer to be codec-agnostic.
  */
 
-import type { ClientMessage, ServerMessage } from "../protocol/schemas";
-import { parseClientMessage, parseServerMessage } from "../protocol/schemas";
-import { encodeBinary, decodeBinary, CodecError } from "./binaryCodec";
+import type { ClientMessage, ServerMessage } from "../protocol/schemas.js";
+import { parseClientMessage, parseServerMessage } from "../protocol/schemas.js";
+import { encodeBinary, decodeBinary, CodecError } from "./binaryCodec.js";
 
 /**
  * Encoded message output - either a string (JSON) or ArrayBuffer (binary).

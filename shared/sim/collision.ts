@@ -1,5 +1,5 @@
-﻿import { Entity, EntityId } from "./entity";
-import { World } from "./world";
+﻿import { Entity, EntityId } from "./entity.js";
+import { World } from "./world.js";
 
 /**
  * Check if two circular entities overlap.

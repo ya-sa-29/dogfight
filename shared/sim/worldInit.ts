@@ -1,10 +1,10 @@
-﻿import { Asteroid } from "./asteroid";
-import { Pickup } from "./pickup";
-import { Vector2 } from "./vector";
-import { createRNG, SeededRNG } from "../rng/mulberry32";
-import { createHomingBehavior } from "./homing";
-import { World } from "./world";
-import { Entity, EntityId, asEntityId } from "./entity";
+﻿import { Asteroid } from "./asteroid.js";
+import { Pickup } from "./pickup.js";
+import { Vector2 } from "./vector.js";
+import { createRNG } from "../rng/mulberry32.js";
+import { World } from "./world.js";
+import { Entity, EntityId, asEntityId } from "./entity.js";
+import { createHomingBehavior } from "./homing.js";
 
 /**
  * World initialization data returned by createWorldFromSeed.

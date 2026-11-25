@@ -8,7 +8,7 @@
   type EntityKind as EntityKindT,
   type InputAction as InputActionT,
   type Codec as CodecT,
-} from "./schemas";
+} from "./schemas.js";
 
 export {
   ClientMessageSchema,
@@ -49,6 +49,6 @@ export {
   isServerMessage,
   assertNever,
   validateInputMessage,
-} from "./schemas";
+} from "./schemas.js";
 
 

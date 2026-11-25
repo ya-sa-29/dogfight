@@ -1,24 +1,24 @@
-﻿export { Vector2 } from "./sim/vector";
-export { Entity, ENTITY_KINDS } from "./sim/entity";
-export type { EntitySnapshot, EntityInput, EntityId, Tick, Seq, Radians } from "./sim/entity";
-export { Ship } from "./sim/ship";
-export { Bullet } from "./sim/bullet";
-export { Missile } from "./sim/missile";
-export { Asteroid } from "./sim/asteroid";
-export { Pickup } from "./sim/pickup";
-export { Explosion } from "./sim/explosion";
-export type { ExplosionParticleData } from "./sim/explosion";
-export { World, NEUTRAL_INPUT } from "./sim/world";
-export type { InputMap } from "./sim/world";
-export { resolveCollisions, circlesOverlap } from "./sim/collision";
-export type { CollisionEvent } from "./sim/collision";
-export { createHomingBehavior } from "./sim/homing";
-export { wrapShip } from "./sim/arena";
-export { integrate } from "./sim/integrate";
-export type { ShipInput, IntegratedState } from "./sim/integrate";
-export { createWorldFromSeed, initializeWorld } from "./sim/worldInit";
-export type { WorldInitData } from "./sim/worldInit";
-export { asEntityId, asTick, asSeq, asRadians, isEntityId, isTick, isSeq } from "./sim/branded";
+﻿export { Vector2 } from "./sim/vector.js";
+export { Entity, ENTITY_KINDS } from "./sim/entity.js";
+export type { EntitySnapshot, EntityInput, EntityId, Tick, Seq, Radians } from "./sim/entity.js";
+export { Ship } from "./sim/ship.js";
+export { Bullet } from "./sim/bullet.js";
+export { Missile } from "./sim/missile.js";
+export { Asteroid } from "./sim/asteroid.js";
+export { Pickup } from "./sim/pickup.js";
+export { Explosion } from "./sim/explosion.js";
+export type { ExplosionParticleData } from "./sim/explosion.js";
+export { World, NEUTRAL_INPUT } from "./sim/world.js";
+export type { InputMap } from "./sim/world.js";
+export { resolveCollisions, circlesOverlap } from "./sim/collision.js";
+export type { CollisionEvent } from "./sim/collision.js";
+export { createHomingBehavior } from "./sim/homing.js";
+export { wrapShip } from "./sim/arena.js";
+export { integrate } from "./sim/integrate.js";
+export type { ShipInput, IntegratedState } from "./sim/integrate.js";
+export { createWorldFromSeed, initializeWorld } from "./sim/worldInit.js";
+export type { WorldInitData } from "./sim/worldInit.js";
+export { asEntityId, asTick, asSeq, asRadians, isEntityId, isTick, isSeq } from "./sim/branded.js";
 
 export {
   MessageType,
@@ -68,7 +68,7 @@ export {
   isServerMessage,
   assertNever,
   validateInputMessage,
-} from "./protocol/schemas";
+} from "./protocol/schemas.js";
 
 export {
   encodeBinary,
@@ -78,7 +78,7 @@ export {
   type BinaryInputMessage,
   type BinarySnapshotMessage,
   type BinaryEntity,
-} from "./codec/binaryCodec";
+} from "./codec/binaryCodec.js";
 
 export {
   jsonCodec,
@@ -86,10 +86,10 @@ export {
   getCodec,
   type Codec as ProtocolCodec,
   type EncodedMessage,
-} from "./codec/index";
+} from "./codec/index.js";
 
-export { encode as encodeJson, decode as decodeJson } from "./codec/jsonCodec";
+export { encode as encodeJson, decode as decodeJson } from "./codec/jsonCodec.js";
 
-export { mulberry32, SeededRNG, createRNG } from "./rng/mulberry32";
+export { mulberry32, SeededRNG, createRNG } from "./rng/mulberry32.js";
 
 
