@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
-import { spawn, ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,10 +10,10 @@ const ROOT = path.resolve(__dirname, "..");
 const SERVER_PORT = 3000;
 const CLIENT_PORT = 4173;
 
-let serverProcess: ChildProcess | null = null;
-let clientProcess: ChildProcess | null = null;
+let serverProcess = null;
+let clientProcess = null;
 
-function waitForPort(port: number, timeoutMs = 30000): Promise<void> {
+function waitForPort(port, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
         const start = Date.now();
         const tryConnect = () => {
@@ -35,7 +35,7 @@ function waitForPort(port: number, timeoutMs = 30000): Promise<void> {
     });
 }
 
-async function startServer(): Promise<void> {
+async function startServer() {
     const serverDist = path.join(ROOT, "server", "dist", "src", "index.js");
     serverProcess = spawn("node", [serverDist], {
         cwd: ROOT,
@@ -54,7 +54,7 @@ async function startServer(): Promise<void> {
     console.log(`Server ready on port ${SERVER_PORT}`);
 }
 
-async function startClient(): Promise<void> {
+async function startClient() {
     clientProcess = spawn("npx", ["vite", "preview", "--port", String(CLIENT_PORT)], {
         cwd: path.join(ROOT, "client"),
         stdio: ["ignore", "pipe", "pipe"],
@@ -72,7 +72,7 @@ async function startClient(): Promise<void> {
     console.log(`Client ready on port ${CLIENT_PORT}`);
 }
 
-async function stopServers(): Promise<void> {
+async function stopServers() {
     if (serverProcess) {
         serverProcess.kill("SIGTERM");
         serverProcess = null;
@@ -83,7 +83,7 @@ async function stopServers(): Promise<void> {
     }
 }
 
-async function main(): Promise<void> {
+async function main() {
     try {
         await startServer();
         await startClient();

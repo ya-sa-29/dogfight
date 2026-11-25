@@ -13,7 +13,7 @@
         "build": "npm run build --workspace=@dogfight/client",
         "preview": "npm run preview --workspace=@dogfight/client",
         "lint": "eslint .",
-        "test": "node --test \"client/test/**/*.test.js\" \"server/test/**/*.test.js\" \"shared/test/**/*.test.js\" && vitest run",
+        "test": "vitest run",
         "typecheck": "tsc --noEmit -p shared/tsconfig.json && tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p client/tsconfig.json",
         "format": "prettier --write .",
         "format:check": "prettier --check ."

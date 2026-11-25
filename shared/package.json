@@ -13,6 +13,9 @@
             "import": "./dist/*.js"
         }
     },
+    "scripts": {
+        "build": "tsc -b tsconfig.json"
+    },
     "dependencies": {
         "zod": "^4.6.7"
     }

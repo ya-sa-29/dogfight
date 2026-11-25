@@ -1091,21 +1091,15 @@ bus.on("invalid", (detail) => { ... });     // ERROR: "invalid" не в GameEven
 
 ### Основні інженерні результати
 
-- Додано 19 тестових файлів у Node.js (`*.test.js`) та 20 тестових файлів у Vitest (`*.test.ts`)
-- Legacy Node.js тести: 308 тестів, 56 наборів, усі проходять
+- Додано 20 тестових файлів у Vitest (`*.test.ts`)
 - Vitest тести: 156 тестів, 20 файлів, усі проходять
-- Загалом модульних та property-based тестів: 464
 - Додано 2 Playwright наскрізні тести: мультиплеєр (рух + чат) та smoke-тест лобі
 - Виправлено критичну помилку у `server/src/match.ts`: `EntityId = 0` (перший корабель гравця) неправильно пропускався через перевірку `!shipId`, яка трактує `0` як falsy
 - GitHub Actions workflow запускається при пуші на `main` та `lab-05-from-lab-04`, при pull request у `main`, а також вручну (`workflow_dispatch`), включаючи Playwright E2E
 
 ## Тестування
 
-### Legacy Node.js тести
-
-Запускаються через `node --test` з шаблону `client/test/**/*.test.js`, `server/test/**/*.test.js`, `shared/test/**/*.test.js`. У регресійному наборі legacy Node.js тестів — 56 наборів і 308 тестів, усі проходять. Тести покрывають симуляцію, протокол, WebSocket, лімітування частоти та інші серверні та клієнтські модулі.
-
-### Vitest модульні тести
+### Vitest модульні та property-based тести
 
 Запускаються через `vitest run`. Конфігурація у `vitest.config.ts` включає тестові файли `*.test.ts` з трьох пакетів (крім `client/test/e2e/**`, які належать Playwright). Проходить 20 тестових файлів і 156 тестів, усі проходять.
 
@@ -1175,7 +1169,7 @@ if (shipId === undefined || shipId === null) continue;
 
 ### Тестові виконання
 
-`npm test` — legacy Node.js тести + Vitest — **всі 464 тестів проходять**, вихідний код 0.
+`npm test` — Vitest модульні та property-based тести — **всі 156 тестів проходять**, вихідний код 0.
 
 ## CI-конвеєр (GitHub Actions)
 

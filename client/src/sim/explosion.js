@@ -1,5 +1,5 @@
 import { Entity } from "./entity.js";
-import { Vector2 } from "./Vector.js";
+import { Vector2 } from "./vector.js";
 
 export class Explosion extends Entity {
     constructor(pos, particleCount = 12) {
