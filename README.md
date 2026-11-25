@@ -1165,7 +1165,7 @@ if (shipId === undefined || shipId === null) continue;
 
 ### Збирання
 
-`npm run build` — Vite production build клієнта — **проходить успішно** (~138 kB bundle, gzip ~41 kB).
+`npm run build` — збирання спільного пакета та клієнта — **проходить успішно** (~138 kB bundle, gzip ~41 kB).
 
 ### Тестові виконання
 

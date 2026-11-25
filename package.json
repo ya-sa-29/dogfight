@@ -10,7 +10,7 @@
     ],
     "scripts": {
         "dev": "npm run dev --workspace=@dogfight/client",
-        "build": "npm run build --workspace=@dogfight/client",
+        "build": "npm run build --workspace=@dogfight/shared && npm run build --workspace=@dogfight/client",
         "preview": "npm run preview --workspace=@dogfight/client",
         "lint": "eslint .",
         "test": "vitest run",
