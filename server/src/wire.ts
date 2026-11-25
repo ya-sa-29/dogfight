@@ -62,5 +62,9 @@ export function encodeServerMessage(message: ServerMessage, codec: Codec): strin
  */
 export function decodeClientFrame(rawData: Buffer | ArrayBuffer | Uint8Array | string, isBinary: boolean): WireClientMessage | null {
   const c = isBinary ? binaryCodec : jsonCodec;
-  return c.decodeClientFrame(rawData);
+  let data: string | ArrayBuffer | ArrayBufferView = rawData;
+  if (!isBinary && typeof rawData !== "string") {
+    data = new TextDecoder().decode(rawData as ArrayBuffer | Uint8Array);
+  }
+  return c.decodeClientFrame(data);
 }

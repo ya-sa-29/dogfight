@@ -113,7 +113,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
         return;
     }
 
-    if (req.method === 'GET' && url.pathname === '/api/rooms') {
+    if (req.method === 'GET' && (url.pathname === '/api/rooms' || url.pathname === '/api/rooms.json')) {
         try {
             const rooms = await getRooms();
 
