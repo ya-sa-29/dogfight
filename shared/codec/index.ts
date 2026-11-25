@@ -1,4 +1,4 @@
-export { encode, decode } from "./jsonCodec.js";
+﻿export { encode, decode } from "./jsonCodec";
 export {
   encodeBinary,
   decodeBinary,
@@ -7,5 +7,7 @@ export {
   type BinaryInputMessage,
   type BinarySnapshotMessage,
   type BinaryEntity,
-} from "./binaryCodec.js";
-export { jsonCodec, binaryCodec, getCodec, type Codec, type EncodedMessage } from "./codec.js";
+} from "./binaryCodec";
+export { jsonCodec, binaryCodec, getCodec, type Codec, type EncodedMessage } from "./codec";
+
+

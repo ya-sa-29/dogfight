@@ -1,10 +1,10 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import fc from "fast-check";
-import { World } from "../../shared/sim/world.js";
-import { Ship } from "../../shared/sim/ship.js";
-import { Vector2 } from "../../shared/sim/vector.js";
-import { createRNG } from "../../shared/rng/mulberry32.js";
-import { createWorldFromSeed } from "../../shared/sim/worldInit.js";
+import { World } from "../../shared/sim/world.ts";
+import { Ship } from "../../shared/sim/ship.ts";
+import { Vector2 } from "../../shared/sim/vector.ts";
+import { createRNG } from "../../shared/rng/mulberry32.ts";
+import { createWorldFromSeed } from "../../shared/sim/worldInit.ts";
 
 const ARENA_WIDTH = 1600;
 const ARENA_HEIGHT = 900;
@@ -87,3 +87,7 @@ describe("ships stay within arena bounds (property-based)", () => {
         );
     });
 });
+
+
+
+

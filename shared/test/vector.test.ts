@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import { Vector2 } from "../../shared/sim/vector.ts";
 
 describe("Vector2", () => {
@@ -100,3 +100,6 @@ describe("Vector2", () => {
         expect(v2.y).toBeCloseTo(1);
     });
 });
+
+
+

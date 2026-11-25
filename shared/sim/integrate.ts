@@ -1,5 +1,5 @@
-import { Vector2 } from "./vector.js";
-import { Entity } from "./entity.js";
+﻿import { Vector2 } from "./vector";
+import { Entity } from "./entity";
 
 /**
  * Input shape for the integrate function (matches Ship input).
@@ -66,3 +66,5 @@ export function integrate(ship: Entity, input: ShipInput, dt: number): Integrate
 
   return { pos, vel, angle, thrust };
 }
+
+

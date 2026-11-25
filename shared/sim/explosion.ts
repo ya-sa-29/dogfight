@@ -1,8 +1,8 @@
-import { Entity, EntityId, EntitySnapshot, EntityInput, ExplosionSnapshot } from "./entity.js";
-import { Vector2 } from "./vector.js";
-import { SeededRNG } from "../rng/mulberry32.js";
-import { World } from "./world.js";
-import { asEntityId } from "./branded.js";
+﻿import { Entity, EntityBase, EntityId, EntitySnapshot, EntityInput, ExplosionSnapshot } from "./entity";
+import { Vector2 } from "./vector";
+import { SeededRNG } from "../rng/mulberry32";
+import { World } from "./world";
+import { asEntityId } from "./branded";
 
 /**
  * Explosion particle data structure.
@@ -71,9 +71,16 @@ export class Explosion extends Entity {
   }
 
   override toSnapshot(): EntitySnapshot {
-    const base = super.toSnapshot();
-    // this.kind === "explosion" ensures base is ExplosionSnapshot
-
+    const base: EntityBase = {
+      id: this.id,
+      kind: this.kind as "explosion",
+      x: this.pos.x,
+      y: this.pos.y,
+      angle: this.angle,
+      radius: this.radius,
+      hp: this.hp,
+      alive: this.alive,
+    };
     if (this.deterministicParticles) {
       return {
         ...base,
@@ -88,7 +95,7 @@ export class Explosion extends Entity {
         })),
       };
     }
-    return base;
+    return base as EntitySnapshot;
   }
 
   /**
@@ -126,3 +133,5 @@ export class Explosion extends Entity {
     return new Explosion(pos, particleCount, Math.random, asEntityId(0), false);
   }
 }
+
+

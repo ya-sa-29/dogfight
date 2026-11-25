@@ -1,8 +1,8 @@
-import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity.js";
-import { Vector2 } from "./vector.js";
-import { World } from "./world.js";
-import { createHomingBehavior } from "./homing.js";
-import { asEntityId } from "./branded.js";
+﻿import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity";
+import { Vector2 } from "./vector";
+import { World } from "./world";
+import { createHomingBehavior } from "./homing";
+import { asEntityId } from "./branded";
 
 /**
  * Missile entity - homing projectile that tracks asteroids.
@@ -57,3 +57,5 @@ export class Missile extends Entity {
     return missile;
   }
 }
+
+

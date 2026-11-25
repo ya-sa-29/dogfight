@@ -1,13 +1,13 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import {
     createWorldFromSeed,
     initializeWorld,
-} from "../../shared/sim/worldInit.js";
-import { World } from "../../shared/sim/world.js";
-import { Ship } from "../../shared/sim/ship.js";
-import { Asteroid } from "../../shared/sim/asteroid.js";
-import { Pickup } from "../../shared/sim/pickup.js";
-import { Vector2 } from "../../shared/sim/vector.js";
+} from "../../shared/sim/worldInit.ts";
+import { World } from "../../shared/sim/world.ts";
+import { Ship } from "../../shared/sim/ship.ts";
+import { Asteroid } from "../../shared/sim/asteroid.ts";
+import { Pickup } from "../../shared/sim/pickup.ts";
+import { Vector2 } from "../../shared/sim/vector.ts";
 
 describe("createWorldFromSeed", () => {
     const WIDTH = 1600;
@@ -88,3 +88,6 @@ describe("initializeWorld", () => {
         expect(asteroids[0]!.behaviors.length).toBe(0);
     });
 });
+
+
+

@@ -1,7 +1,7 @@
-import { resolveCollisions, CollisionEvent } from "./collision.js";
-import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity.js";
-import { asEntityId } from "./branded.js";
-import { Ship } from "./ship.js";
+﻿import { resolveCollisions, CollisionEvent } from "./collision";
+import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity";
+import { asEntityId } from "./branded";
+import { Ship } from "./ship";
 
 /**
  * Neutral input used when no input is available for an entity.
@@ -163,3 +163,5 @@ export class World {
     return snapshots;
   }
 }
+
+

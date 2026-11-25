@@ -1,5 +1,5 @@
-import { Entity, EntityId } from "./entity.js";
-import { World } from "./world.js";
+﻿import { Entity, EntityId } from "./entity";
+import { World } from "./world";
 
 /**
  * Check if two circular entities overlap.
@@ -116,3 +116,5 @@ function damageShip(world: World, ship: Entity): boolean {
   }
   return false;
 }
+
+

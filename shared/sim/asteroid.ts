@@ -1,6 +1,6 @@
-import { Entity, EntityId, EntitySnapshot } from "./entity.js";
-import { Vector2 } from "./vector.js";
-import { asEntityId } from "./branded.js";
+﻿import { Entity, EntityId, EntitySnapshot } from "./entity";
+import { Vector2 } from "./vector";
+import { asEntityId } from "./branded";
 
 /**
  * Asteroid entity - destructible obstacle that can be shot for points.
@@ -36,3 +36,5 @@ export class Asteroid extends Entity {
     return asteroid;
   }
 }
+
+

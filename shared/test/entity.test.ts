@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import { Entity } from "../../shared/sim/entity.ts";
 import { Vector2 } from "../../shared/sim/vector.ts";
 import { Ship } from "../../shared/sim/ship.ts";
@@ -247,3 +247,6 @@ describe("Explosion", () => {
         expect(typeof snapshot.particles[0]!.x).toBe("number");
     });
 });
+
+
+

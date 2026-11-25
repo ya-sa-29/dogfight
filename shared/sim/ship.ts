@@ -1,9 +1,9 @@
-import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity.js";
-import { Vector2 } from "./vector.js";
-import { Bullet } from "./bullet.js";
-import { Missile } from "./missile.js";
-import { World } from "./world.js";
-import { asEntityId } from "./branded.js";
+﻿import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity";
+import { Vector2 } from "./vector";
+import { Bullet } from "./bullet";
+import { Missile } from "./missile";
+import { World } from "./world";
+import { asEntityId } from "./branded";
 
 /**
  * Ship entity - player-controlled spacecraft.
@@ -167,3 +167,5 @@ export class Ship extends Entity {
 }
 
 export type ShipInput = typeof Ship.InputShape;
+
+

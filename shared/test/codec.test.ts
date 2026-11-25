@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import { jsonCodec, binaryCodec, getCodec } from "../../shared/codec/codec.ts";
 import { encode, decode } from "../../shared/codec/jsonCodec.ts";
 
@@ -131,4 +131,74 @@ describe("Codec interface", () => {
         const decoded = binaryCodec.decodeClientFrame(new ArrayBuffer(8));
         expect(decoded).toBeNull();
     });
+
+    test("binaryCodec decodeServerFrame returns null for invalid JSON", () => {
+        const decoded = binaryCodec.decodeServerFrame("not json");
+        expect(decoded).toBeNull();
+    });
+
+    test("binaryCodec decodeServerFrame returns null for CodecError on binary", () => {
+        const decoded = binaryCodec.decodeServerFrame(new ArrayBuffer(0));
+        expect(decoded).toBeNull();
+    });
+
+    test("binaryCodec decodeClientFrame decodes Uint8Array binary input", () => {
+        const message = {
+            type: "input",
+            seq: 1,
+            tick: 10,
+            thrust: true,
+            turnLeft: false,
+            turnRight: false,
+            fire: false,
+            switchWeapon: false,
+        };
+        const encoded = binaryCodec.encodeClientMessage(message);
+        const decoded = binaryCodec.decodeClientFrame(new Uint8Array(encoded));
+        expect(decoded!.seq).toBe(message.seq);
+    });
+
+    test("binaryCodec decodeServerFrame decodes Uint8Array binary snapshot", () => {
+        const message = {
+            type: "snapshot",
+            tick: 10,
+            serverTime: 0,
+            seed: 0,
+            score: 0,
+            entities: [],
+            playerAcks: {},
+        };
+        const encoded = binaryCodec.encodeServerMessage(message);
+        const decoded = binaryCodec.decodeServerFrame(new Uint8Array(encoded));
+        expect(decoded!.tick).toBe(message.tick);
+    });
+
+    test("binaryCodec decodeClientFrame returns null for CodecError on Uint8Array", () => {
+        const decoded = binaryCodec.decodeClientFrame(new Uint8Array(0));
+        expect(decoded).toBeNull();
+    });
+
+    test("binaryCodec decodeServerFrame returns null for CodecError on Uint8Array", () => {
+        const decoded = binaryCodec.decodeServerFrame(new Uint8Array(0));
+        expect(decoded).toBeNull();
+    });
+
+    test("binaryCodec decodeServerFrame decodes binary snapshot", () => {
+        const message = {
+            type: "snapshot",
+            tick: 10,
+            serverTime: 0,
+            seed: 0,
+            score: 0,
+            entities: [],
+            playerAcks: {},
+        };
+        const encoded = binaryCodec.encodeServerMessage(message);
+        const decoded = binaryCodec.decodeServerFrame(encoded);
+        expect(decoded!.tick).toBe(message.tick);
+        expect(decoded!.type).toBe(message.type);
+    });
 });
+
+
+

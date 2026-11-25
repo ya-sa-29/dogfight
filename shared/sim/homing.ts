@@ -1,5 +1,5 @@
-import { Vector2 } from "./vector.js";
-import { Entity } from "./entity.js";
+﻿import { Vector2 } from "./vector";
+import { Entity } from "./entity";
 
 /**
  * Creates a homing behavior that makes an entity turn toward a target.
@@ -35,3 +35,5 @@ export function createHomingBehavior(target: Entity, turnSpeed = 2.5) {
     },
   };
 }
+
+

@@ -1,8 +1,8 @@
-import { describe, expect, test } from "vitest";
-import { Missile } from "../../shared/sim/missile.js";
-import { Vector2 } from "../../shared/sim/vector.js";
-import { World } from "../../shared/sim/world.js";
-import { Asteroid } from "../../shared/sim/asteroid.js";
+﻿import { describe, expect, test } from "vitest";
+import { Missile } from "../../shared/sim/missile.ts";
+import { Vector2 } from "../../shared/sim/vector.ts";
+import { World } from "../../shared/sim/world.ts";
+import { Asteroid } from "../../shared/sim/asteroid.ts";
 
 describe("Missile", () => {
     test("constructor sets ttl and kind", () => {
@@ -138,3 +138,6 @@ class EntityLike {
     ) {}
     behaviors: { update: (e: EntityLike, dt: number) => void }[] = [];
 }
+
+
+

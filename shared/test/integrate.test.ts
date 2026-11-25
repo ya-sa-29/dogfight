@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import { integrate } from "../../shared/sim/integrate.ts";
 import { Entity } from "../../shared/sim/entity.ts";
 import { Vector2 } from "../../shared/sim/vector.ts";
@@ -18,7 +18,7 @@ function makeShip(
 }
 
 describe("integrate", () => {
-    test("with no input, position advances by velocity × dt (after drag)", () => {
+    test("with no input, position advances by velocity Г— dt (after drag)", () => {
         const ship = makeShip({ vel: new Vector2(100, 0) });
         const result = integrate(
             ship,
@@ -93,7 +93,7 @@ describe("integrate", () => {
         expect(result.angle).toBeGreaterThan(0);
     });
 
-    test("is a pure function — same input produces same output", () => {
+    test("is a pure function вЂ” same input produces same output", () => {
         const ship = makeShip({ vel: new Vector2(50, 25), angle: 0.5 });
         const input = { turnLeft: true, turnRight: false, thrust: true };
         const r1 = integrate(ship, input, 0.1);
@@ -120,3 +120,6 @@ describe("integrate", () => {
         expect(ship.angle).toBe(origAngle);
     });
 });
+
+
+

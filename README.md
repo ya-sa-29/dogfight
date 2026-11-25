@@ -1091,8 +1091,8 @@ bus.on("invalid", (detail) => { ... });     // ERROR: "invalid" не в GameEven
 
 ### Основні інженерні результати
 
-- Додано 20 тестових файлів у Vitest (`*.test.ts`)
-- Vitest тести: 156 тестів, 20 файлів, усі проходять
+- Додано 22 тестових файлів у Vitest (`*.test.ts`)
+- Vitest тести: 217 тестів, 22 файли, усі проходять
 - Додано 2 Playwright наскрізні тести: мультиплеєр (рух + чат) та smoke-тест лобі
 - Виправлено критичну помилку у `server/src/match.ts`: `EntityId = 0` (перший корабель гравця) неправильно пропускався через перевірку `!shipId`, яка трактує `0` як falsy
 - GitHub Actions workflow запускається при пуші на `main` та `lab-05-from-lab-04`, при pull request у `main`, а також вручну (`workflow_dispatch`), включаючи Playwright E2E
@@ -1101,7 +1101,7 @@ bus.on("invalid", (detail) => { ... });     // ERROR: "invalid" не в GameEven
 
 ### Vitest модульні та property-based тести
 
-Запускаються через `vitest run`. Конфігурація у `vitest.config.ts` включає тестові файли `*.test.ts` з трьох пакетів (крім `client/test/e2e/**`, які належать Playwright). Проходить 20 тестових файлів і 156 тестів, усі проходять.
+Запускаються через `vitest run`. Конфігурація у `vitest.config.ts` включає тестові файли `*.test.ts` з трьох пакетів (крім `client/test/e2e/**`, які належать Playwright). Проходить 22 тестових файли і 217 тестів, усі проходять.
 
 ### fast-check property-based тести
 
@@ -1169,7 +1169,8 @@ if (shipId === undefined || shipId === null) continue;
 
 ### Тестові виконання
 
-`npm test` — Vitest модульні та property-based тести — **всі 156 тестів проходять**, вихідний код 0.
+`npm test` — Vitest модульні та property-based тести — **всі 217 тестів проходять**, вихідний код 0.
+- Покриття коду `shared/` — **88.96%** statements (вимога Lab 07: ≥ 85%).
 
 ## CI-конвеєр (GitHub Actions)
 

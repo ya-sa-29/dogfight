@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import { Explosion } from "../../shared/sim/explosion.ts";
 import { Vector2 } from "../../shared/sim/vector.ts";
 import { createRNG } from "../../shared/rng/mulberry32.ts";
@@ -136,3 +136,6 @@ class WorldLike {
         this.despawned.push(id);
     }
 }
+
+
+

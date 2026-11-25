@@ -1,9 +1,9 @@
-import { describe, expect, test } from "vitest";
-import { Ship } from "../../shared/sim/ship.js";
-import { Vector2 } from "../../shared/sim/vector.js";
-import { World } from "../../shared/sim/world.js";
-import { Asteroid } from "../../shared/sim/asteroid.js";
-import { Pickup } from "../../shared/sim/pickup.js";
+﻿import { describe, expect, test } from "vitest";
+import { Ship } from "../../shared/sim/ship.ts";
+import { Vector2 } from "../../shared/sim/vector.ts";
+import { World } from "../../shared/sim/world.ts";
+import { Asteroid } from "../../shared/sim/asteroid.ts";
+import { Pickup } from "../../shared/sim/pickup.ts";
 
 describe("Ship", () => {
     test("constructor sets ship-specific state", () => {
@@ -159,4 +159,70 @@ describe("Ship", () => {
         expect(restored.fireCooldown).toBe(0.1);
         expect(restored.invulnerabilityTimer).toBe(0.5);
     });
+
+    test("fromSnapshot throws for non-ship snapshot", () => {
+        const data = {
+            kind: "asteroid" as const,
+            x: 100,
+            y: 200,
+            angle: 0,
+            radius: 15,
+            hp: 3,
+            alive: true,
+            id: 1,
+        };
+        expect(() => Ship.fromSnapshot(data as never)).toThrow(
+            "Cannot create Ship from non-ship snapshot",
+        );
+    });
+
+    test("speed caps at maxSpeed with sustained thrust", () => {
+        const world = new World();
+        const ship = new Ship(400, 300, 1);
+        world.spawn(ship);
+        const thrust = {
+            thrust: true,
+            turnLeft: false,
+            turnRight: false,
+            fire: false,
+            switchWeapon: false,
+        };
+        // Apply thrust many times to exceed maxSpeed
+        for (let i = 0; i < 100; i++) {
+            ship.update(1 / 30, thrust, world);
+        }
+        expect(ship.vel.length).toBeLessThanOrEqual(300 + 0.01);
+    });
+
+    test("fires missile when weapon is missile and asteroid exists", () => {
+        const world = new World();
+        const ship = new Ship(400, 300, 1);
+        world.spawn(ship);
+        world.spawn(
+            new Asteroid(new Vector2(500, 300), new Vector2(0, 0), 20, 10),
+        );
+        ship.missileCount = 1;
+        ship.weapon = "missile";
+        ship.fireCooldown = 0;
+
+        const projectiles = ship.update(
+            1 / 30,
+            {
+                thrust: false,
+                turnLeft: false,
+                turnRight: false,
+                fire: true,
+                switchWeapon: false,
+            },
+            world,
+        );
+
+        const missiles = projectiles.filter((p) => p.kind === "missile");
+        expect(missiles.length).toBe(1);
+        expect(ship.missileCount).toBe(0);
+        expect(ship.weapon).toBe("bullet");
+    });
 });
+
+
+

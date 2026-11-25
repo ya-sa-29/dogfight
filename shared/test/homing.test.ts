@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import { createHomingBehavior } from "../../shared/sim/homing.ts";
 import { Entity } from "../../shared/sim/entity.ts";
 import { Vector2 } from "../../shared/sim/vector.ts";
@@ -94,3 +94,6 @@ describe("createHomingBehavior", () => {
         expect(Math.abs(entity.angle)).toBeLessThanOrEqual(0.1);
     });
 });
+
+
+

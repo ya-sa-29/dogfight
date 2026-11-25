@@ -1,7 +1,7 @@
-import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity.js";
-import { Vector2 } from "./vector.js";
-import { World } from "./world.js";
-import { asEntityId } from "./branded.js";
+﻿import { Entity, EntityId, EntitySnapshot, EntityInput } from "./entity";
+import { Vector2 } from "./vector";
+import { World } from "./world";
+import { asEntityId } from "./branded";
 
 /**
  * Bullet entity - fast projectile fired by ships.
@@ -50,3 +50,5 @@ export class Bullet extends Entity {
     return bullet;
   }
 }
+
+

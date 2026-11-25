@@ -38,5 +38,6 @@ export default defineConfig({
         alias: {
             "@dogfight/shared": sharedSrc,
         },
+        extensions: [".ts", ".mjs", ".js", ".json"],
     },
 });

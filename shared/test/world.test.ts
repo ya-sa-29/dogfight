@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 import { World } from "../../shared/sim/world.ts";
 import { Ship } from "../../shared/sim/ship.ts";
 import { Asteroid } from "../../shared/sim/asteroid.ts";
@@ -302,3 +302,6 @@ class EntityLike2 {
     ) {}
     takeDamage() {}
 }
+
+
+

@@ -1,6 +1,6 @@
-import { Entity, EntityId, EntitySnapshot } from "./entity.js";
-import { Vector2 } from "./vector.js";
-import { asEntityId } from "./branded.js";
+﻿import { Entity, EntityId, EntitySnapshot } from "./entity";
+import { Vector2 } from "./vector";
+import { asEntityId } from "./branded";
 
 /**
  * Pickup entity - grants missiles when collected by a ship.
@@ -30,3 +30,5 @@ export class Pickup extends Entity {
     return pickup;
   }
 }
+
+

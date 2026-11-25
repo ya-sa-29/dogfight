@@ -1,13 +1,13 @@
-/**
+﻿/**
  * Common Codec interface for protocol message encoding/decoding.
  *
  * Both JSON and binary codecs implement this interface, allowing the
  * transport layer to be codec-agnostic.
  */
 
-import type { ClientMessage, ServerMessage } from "../protocol/schemas.js";
-import { parseClientMessage, parseServerMessage } from "../protocol/schemas.js";
-import { encodeBinary, decodeBinary, CodecError } from "./binaryCodec.js";
+import type { ClientMessage, ServerMessage } from "../protocol/schemas";
+import { parseClientMessage, parseServerMessage } from "../protocol/schemas";
+import { encodeBinary, decodeBinary, CodecError } from "./binaryCodec";
 
 /**
  * Encoded message output - either a string (JSON) or ArrayBuffer (binary).
@@ -171,3 +171,5 @@ export const binaryCodec: Codec = {
 export function getCodec(name: "json" | "binary"): Codec {
   return name === "binary" ? binaryCodec : jsonCodec;
 }
+
+

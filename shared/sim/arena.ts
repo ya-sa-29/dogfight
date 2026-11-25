@@ -1,5 +1,5 @@
-import { Vector2 } from "./vector.js";
-import { Entity } from "./entity.js";
+﻿import { Vector2 } from "./vector";
+import { Entity } from "./entity";
 
 /**
  * Wraps a ship's position to stay within the arena bounds.
@@ -14,3 +14,5 @@ export function wrapShip(ship: Entity, width: number, height: number): void {
     ((ship.pos.y % height) + height) % height,
   );
 }
+
+
