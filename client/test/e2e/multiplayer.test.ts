@@ -197,6 +197,129 @@ test.describe("Multiplayer E2E", () => {
             expect(namesA).toEqual([PLAYER_A_NAME, PLAYER_B_NAME]);
             expect(namesB).toEqual([PLAYER_A_NAME, PLAYER_B_NAME]);
 
+            // Movement synchronization: Player A thrusts, Player B observes
+            // the authoritative position change within 500 ms.
+            const initialPos = await pageB.evaluate(
+                ({ shipId }: { shipId: number }): Promise<{ x: number; y: number }> => {
+                    return new Promise((resolve, reject) => {
+                        const gc = (window as any).gameConnection;
+                        if (!gc) {
+                            reject(new Error("gameConnection not found"));
+                            return;
+                        }
+                        const handler = (e: CustomEvent) => {
+                            const entities = e.detail.entities || [];
+                            const ship = entities.find((e: any) => e.id === shipId);
+                            if (ship) {
+                                gc.removeEventListener("snapshot", handler as EventListener);
+                                resolve({ x: ship.x, y: ship.y });
+                            }
+                        };
+                        gc.addEventListener("snapshot", handler);
+                        setTimeout(
+                            () => reject(new Error("snapshot timeout")),
+                            15000,
+                        );
+                    });
+                },
+                { shipId: resultA.shipId },
+            );
+
+            // Wait for pageA to receive at least one snapshot so the input
+            // sender gate (canSendInput) opens. Snapshots are broadcast to all
+            // players; waiting on pageA ensures lastSnapshotTick >= 0 before
+            // transmitting input.
+            await pageA.evaluate((): Promise<boolean> => {
+                return new Promise((resolve) => {
+                    const gc = (window as any).gameConnection;
+                    if (!gc) {
+                        resolve(false);
+                        return;
+                    }
+                    const handler = () => {
+                        gc.removeEventListener("snapshot", handler as EventListener);
+                        resolve(true);
+                    };
+                    gc.addEventListener("snapshot", handler);
+                    setTimeout(() => resolve(false), 15000);
+                });
+            });
+
+            // Send thrust inputs through the real WebSocket path
+            // (gameConnection.send, same as chat). Sequence numbers are
+            // managed manually to match the server's expected seq progression
+            // (0, 1, 2, ...). The inputTransmitter normally handles this, but
+            // direct send exercises the identical production networking code.
+            await pageA.evaluate(() => {
+                const gc = (window as any).gameConnection;
+                if (!gc) return;
+                let seq = 0;
+                const sendOne = () => {
+                    const ok = gc.send({
+                        type: "input",
+                        seq: seq++,
+                        tick: 0,
+                        thrust: true,
+                        turnLeft: false,
+                        turnRight: false,
+                        fire: false,
+                        switchWeapon: false,
+                    });
+                    if (ok && seq < 10) {
+                        setTimeout(sendOne, 40);
+                    }
+                };
+                sendOne();
+            });
+
+            await pageA.waitForTimeout(300);
+
+            const moved = await pageB.evaluate(
+                async ({
+                    shipId,
+                    initialX,
+                    initialY,
+                }: {
+                    shipId: number;
+                    initialX: number;
+                    initialY: number;
+                }): Promise<{ moved: boolean }> => {
+                    return new Promise((resolve) => {
+                        const gc = (window as any).gameConnection;
+                        if (!gc) {
+                            resolve({ moved: false });
+                            return;
+                        }
+                        let resolved = false;
+                        const handler = (e: CustomEvent) => {
+                            if (resolved) return;
+                            const entities = e.detail.entities || [];
+                            const ship = entities.find((e: any) => e.id === shipId);
+                            if (ship && (ship.x !== initialX || ship.y !== initialY)) {
+                                resolved = true;
+                                gc.removeEventListener("snapshot", handler as EventListener);
+                                resolve({ moved: true });
+                            }
+                        };
+                        gc.addEventListener("snapshot", handler);
+                        setTimeout(() => {
+                            if (!resolved) {
+                                resolved = true;
+                                gc.removeEventListener("snapshot", handler as EventListener);
+                                resolve({ moved: false });
+                            }
+                        }, 500);
+                    });
+                },
+                {
+                    shipId: resultA.shipId,
+                    initialX: initialPos.x,
+                    initialY: initialPos.y,
+                },
+            ) as { moved: boolean };
+
+            expect(moved.moved).toBe(true);
+
             // Chat propagation: Player A sends chat, Player B receives it.
             const chatMessage = "Hello from Player A";
 

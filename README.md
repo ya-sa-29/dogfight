@@ -1,5 +1,7 @@
 # Dogfight — JavaScript Labs: Browser Game, Node.js Server and Networking
 
+[![CI](https://github.com/ya-sa-29/dogfight/actions/workflows/ci.yml/badge.svg)](https://github.com/ya-sa-29/dogfight/actions/workflows/ci.yml)
+
 ## Опис проєкту
 
 Dogfight — браузерна гра на JavaScript Canvas 2D, яка розвивається в межах лабораторних робіт із JavaScript та Node.js.

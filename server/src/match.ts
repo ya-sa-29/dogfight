@@ -303,7 +303,7 @@ export class Match extends EventEmitter {
 
         for (const [playerId, player] of this.players) {
             const shipId = this.ships.get(playerId);
-            if (!shipId) continue;
+            if (shipId === undefined || shipId === null) continue;
 
             // For each ship, combine all pending inputs into one input for this tick
             // Continuous actions (thrust, turnLeft, turnRight): use latest state

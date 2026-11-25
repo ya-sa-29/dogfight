@@ -54,3 +54,29 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build --workspace=@dogfight/shared
+      - run: npm run build --workspace=@dogfight/server
+      - run: |
+          node server/dist/src/index.js &
+          SERVER_PID=$!
+          npm run dev --workspace=@dogfight/client &
+          VITE_PID=$!
+          sleep 5
+          npx playwright test
+          TEST_EXIT=$?
+          kill $SERVER_PID $VITE_PID 2>/dev/null || true
+          exit $TEST_EXIT
+        env:
+          CI: true
