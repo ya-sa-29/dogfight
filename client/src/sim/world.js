@@ -1,4 +1,5 @@
 import { resolveCollisions } from "./collision.js";
+import { Ship } from "./ship.js";
 
 export class World {
     #entities = new Map();
@@ -22,6 +23,11 @@ export class World {
 
     get(id) {
         return this.#entities.get(id);
+    }
+
+    getShip(id) {
+        const entity = this.#entities.get(id);
+        return entity instanceof Ship ? entity : undefined;
     }
 
     *ofKind(kind) {

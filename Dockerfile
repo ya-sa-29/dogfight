@@ -37,6 +37,9 @@ COPY --from=builder /app/client/dist ./client/dist
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+
+# Create writable logs directory for match logs (owned by nodejs)
+RUN mkdir -p /app/logs && chown nodejs:nodejs /app/logs
 USER nodejs
 
 # Production environment
@@ -52,4 +55,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 EXPOSE 3000
 
 # Exec form so SIGTERM reaches Node directly (not a shell)
-CMD ["node", "server/dist/index.js"]
+CMD ["node", "server/dist/src/index.js"]

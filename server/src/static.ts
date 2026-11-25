@@ -6,7 +6,7 @@ import { getMimeType } from './mimeTypes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const DIST_DIR = path.resolve(__dirname, '../../client/dist');
+const DIST_DIR = path.resolve(__dirname, '../../../client/dist');
 
 interface StaticFileResult {
     filePath: string;
